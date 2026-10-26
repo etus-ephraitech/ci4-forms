@@ -17,9 +17,12 @@ use Stringable;
  * getters use the get/is prefix. Calls to methods a field does not have are
  * forwarded to the form that created it, so inline definitions can chain:
  *
- *     Form::make('booking')
+ *     $form = Form::make('booking')
  *         ->text('full_name')->rules('required')
- *         ->email('email')->rules('required|valid_email');
+ *         ->email('email')->rules('required|valid_email')
+ *         ->end();
+ *
+ * end() returns the form itself once the last field is defined.
  */
 abstract class Field implements FieldInterface
 {
@@ -109,6 +112,18 @@ abstract class Field implements FieldInterface
         $this->parent = $parent;
 
         return $this;
+    }
+
+    /**
+     * Returns the form this field belongs to, ending an inline chain.
+     */
+    public function end(): object
+    {
+        if ($this->parent === null) {
+            throw FormException::forFieldWithoutForm($this->name);
+        }
+
+        return $this->parent;
     }
 
     public function label(string $label): static

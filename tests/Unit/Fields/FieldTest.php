@@ -236,6 +236,14 @@ final class FieldTest extends CIUnitTestCase
         $this->assertSame('forwarded:email', $field->email('email'));
     }
 
+    public function testEndWithoutFormThrows(): void
+    {
+        $this->expectException(FormException::class);
+        $this->expectExceptionMessage('does not belong to a form');
+
+        (new Text('name'))->end();
+    }
+
     public function testToArray(): void
     {
         $data = (new Text('name', 'Name'))->rules('required')->help('Help')->toArray();

@@ -1,0 +1,834 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Ephraitech\Forms;
+
+use Ephraitech\Forms\Config\Forms;
+use Ephraitech\Forms\Contracts\FieldInterface;
+use Ephraitech\Forms\Exceptions\FormException;
+use Ephraitech\Forms\Fields\Checkbox;
+use Ephraitech\Forms\Fields\Date;
+use Ephraitech\Forms\Fields\Email;
+use Ephraitech\Forms\Fields\Field;
+use Ephraitech\Forms\Fields\Hidden;
+use Ephraitech\Forms\Fields\Number;
+use Ephraitech\Forms\Fields\Password;
+use Ephraitech\Forms\Fields\Radio;
+use Ephraitech\Forms\Fields\Select;
+use Ephraitech\Forms\Fields\Submit;
+use Ephraitech\Forms\Fields\Tel;
+use Ephraitech\Forms\Fields\Text;
+use Ephraitech\Forms\Fields\Textarea;
+use Ephraitech\Forms\Fields\Url;
+use Stringable;
+use Traversable;
+
+/**
+ * A form definition plus the data it is working with.
+ *
+ * Define forms either as a class:
+ *
+ *     class BookingForm extends Form
+ *     {
+ *         protected function define(): void
+ *         {
+ *             $this->text('full_name')->rules('required|max_length[100]');
+ *             $this->email('email')->rules('required|valid_email');
+ *             $this->submit('Book now');
+ *         }
+ *     }
+ *
+ * or inline:
+ *
+ *     $form = Form::make('newsletter')
+ *         ->email('email')->rules('required|valid_email')
+ *         ->submit('Subscribe')
+ *         ->end();
+ *
+ * (end() returns from the last field back to the form.)
+ *
+ * Values are resolved per field in this order: the submitted request data,
+ * then session old input (after redirect()->withInput()), then data passed to
+ * fill(), then the field's default.
+ */
+class Form
+{
+    /**
+     * Name of the hidden field that identifies which form a submission came
+     * from, so old input from another form on the same page is never applied.
+     */
+    public const FORM_KEY = '_form';
+
+    /**
+     * Field names the package uses itself. The CSRF token name is checked
+     * separately because it comes from the app's Security config.
+     */
+    private const RESERVED_FIELD_NAMES = [self::FORM_KEY, '_method'];
+
+    /**
+     * Form attributes that have dedicated methods.
+     */
+    private const RESERVED_ATTRIBUTES = ['action', 'method', 'enctype', 'name'];
+
+    protected Forms $config;
+
+    protected string $name;
+
+    protected ?string $action = null;
+
+    protected string $method;
+
+    protected ?string $id = null;
+
+    protected bool $multipart = false;
+
+    /**
+     * @var array<string, bool|float|int|string|Stringable>
+     */
+    protected array $attributes = [];
+
+    /**
+     * @var list<string>
+     */
+    protected array $classes = [];
+
+    /**
+     * @var array<string, FieldInterface>
+     */
+    protected array $fields = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $filled = [];
+
+    /**
+     * Request data of the current submission, or null when none was given.
+     *
+     * @var array<string, mixed>|null
+     */
+    protected ?array $submitted = null;
+
+    /**
+     * @var array<string, mixed>|null
+     */
+    private ?array $oldInput = null;
+
+    private bool $oldInputLoaded = false;
+
+    /**
+     * @param string|null $name   Form name; derived from the class name when
+     *                            omitted (BookingForm becomes "booking").
+     * @param Forms|null  $config Config instance; resolved from the app when
+     *                            omitted, preferring App\Config\Forms.
+     */
+    public function __construct(?string $name = null, ?Forms $config = null)
+    {
+        $this->config = $config ?? static::resolveConfig();
+        $this->name   = $this->validateName($name ?? static::defaultName());
+        $this->method = $this->config->defaultMethod();
+
+        $this->define();
+    }
+
+    /**
+     * Creates a form fluently: Form::make('newsletter')->email('email')...
+     */
+    public static function make(?string $name = null, ?Forms $config = null): static
+    {
+        return new static($name, $config);
+    }
+
+    // -------------------------------------------------------------------------
+    // Form settings
+    // -------------------------------------------------------------------------
+
+    public function action(?string $action): static
+    {
+        $this->action = $action === null || trim($action) === '' ? null : $action;
+
+        return $this;
+    }
+
+    public function method(string $method): static
+    {
+        $this->method = $this->config->normaliseMethod($method);
+
+        return $this;
+    }
+
+    public function id(?string $id): static
+    {
+        $this->id = $id === null || trim($id) === '' ? null : trim($id);
+
+        return $this;
+    }
+
+    /**
+     * Sends the form as multipart/form-data, required for file uploads.
+     */
+    public function multipart(bool $multipart = true): static
+    {
+        $this->multipart = $multipart;
+
+        return $this;
+    }
+
+    /**
+     * Sets several attributes on the <form> element.
+     *
+     * @param array<string, bool|float|int|string|Stringable|null> $attributes
+     */
+    public function attributes(array $attributes): static
+    {
+        foreach ($attributes as $attribute => $value) {
+            $this->attribute((string) $attribute, $value);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Sets one attribute on the <form> element. True renders a bare
+     * attribute, false or null removes it. "id" and "class" are routed to
+     * id() and addClass().
+     */
+    public function attribute(string $attribute, bool|float|int|string|Stringable|null $value): static
+    {
+        if (preg_match('/^[A-Za-z_:][A-Za-z0-9_:.\-]*$/', $attribute) !== 1) {
+            throw FormException::forInvalidFormAttributeName($this->name, $attribute);
+        }
+
+        $key = strtolower($attribute);
+
+        if (in_array($key, self::RESERVED_ATTRIBUTES, true)) {
+            throw FormException::forReservedFormAttribute($this->name, $key);
+        }
+
+        if ($key === 'id') {
+            return $this->id($value === null || $value === false ? null : (string) $value);
+        }
+
+        if ($key === 'class') {
+            return $value === null || $value === false ? $this : $this->addClass((string) $value);
+        }
+
+        if ($value === null || $value === false) {
+            unset($this->attributes[$key]);
+
+            return $this;
+        }
+
+        $this->attributes[$key] = $value;
+
+        return $this;
+    }
+
+    /**
+     * Adds CSS classes to the <form> element, on top of the theme's class.
+     */
+    public function addClass(string ...$classes): static
+    {
+        foreach ($classes as $class) {
+            foreach (preg_split('/\s+/', trim($class)) ?: [] as $single) {
+                if ($single !== '' && ! in_array($single, $this->classes, true)) {
+                    $this->classes[] = $single;
+                }
+            }
+        }
+
+        return $this;
+    }
+
+    public function getConfig(): Forms
+    {
+        return $this->config;
+    }
+
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    public function getAction(): ?string
+    {
+        return $this->action;
+    }
+
+    /**
+     * The declared method: get, post, put, patch or delete.
+     */
+    public function getMethod(): string
+    {
+        return $this->method;
+    }
+
+    /**
+     * The method attribute the browser can actually send: get or post.
+     */
+    public function getHtmlMethod(): string
+    {
+        return $this->method === 'get' ? 'get' : 'post';
+    }
+
+    /**
+     * The method to send in a hidden _method field, or null when no spoofing
+     * is needed (GET and POST forms, or spoofing disabled in config).
+     */
+    public function getSpoofedMethod(): ?string
+    {
+        if (! $this->config->spoofMethods || in_array($this->method, ['get', 'post'], true)) {
+            return null;
+        }
+
+        return strtoupper($this->method);
+    }
+
+    /**
+     * Whether the CSRF field should be added (all non-GET forms, when enabled).
+     */
+    public function needsCsrf(): bool
+    {
+        return $this->config->csrf && $this->method !== 'get';
+    }
+
+    public function getId(): string
+    {
+        return $this->id ?? (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', $this->name);
+    }
+
+    public function isMultipart(): bool
+    {
+        return $this->multipart;
+    }
+
+    /**
+     * @return array<string, bool|float|int|string|Stringable>
+     */
+    public function getAttributes(): array
+    {
+        return $this->attributes;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getClasses(): array
+    {
+        return $this->classes;
+    }
+
+    /**
+     * Prefix for generated field ids, according to the config.
+     */
+    public function getIdPrefix(): string
+    {
+        return $this->config->prefixIdsWithFormName ? $this->getId() : '';
+    }
+
+    // -------------------------------------------------------------------------
+    // Field builders
+    // -------------------------------------------------------------------------
+
+    public function text(string $name, ?string $label = null): Text
+    {
+        return $this->add(new Text($name, $label));
+    }
+
+    public function email(string $name, ?string $label = null): Email
+    {
+        return $this->add(new Email($name, $label));
+    }
+
+    public function password(string $name, ?string $label = null): Password
+    {
+        return $this->add(new Password($name, $label));
+    }
+
+    public function number(string $name, ?string $label = null): Number
+    {
+        return $this->add(new Number($name, $label));
+    }
+
+    public function tel(string $name, ?string $label = null): Tel
+    {
+        return $this->add(new Tel($name, $label));
+    }
+
+    public function url(string $name, ?string $label = null): Url
+    {
+        return $this->add(new Url($name, $label));
+    }
+
+    public function date(string $name, ?string $label = null): Date
+    {
+        return $this->add(new Date($name, $label));
+    }
+
+    public function hidden(string $name, mixed $default = null): Hidden
+    {
+        return $this->add((new Hidden($name))->default($default));
+    }
+
+    public function textarea(string $name, ?string $label = null): Textarea
+    {
+        return $this->add(new Textarea($name, $label));
+    }
+
+    /**
+     * @param array<array-key, mixed>|\Closure(): array<array-key, mixed>|null $options
+     */
+    public function select(string $name, ?string $label = null, array|\Closure|null $options = null): Select
+    {
+        $field = new Select($name, $label);
+
+        if ($options !== null) {
+            $field->options($options);
+        }
+
+        return $this->add($field);
+    }
+
+    /**
+     * @param array<array-key, mixed>|\Closure(): array<array-key, mixed>|null $options
+     */
+    public function radio(string $name, ?string $label = null, array|\Closure|null $options = null): Radio
+    {
+        $field = new Radio($name, $label);
+
+        if ($options !== null) {
+            $field->options($options);
+        }
+
+        return $this->add($field);
+    }
+
+    public function checkbox(string $name, ?string $label = null): Checkbox
+    {
+        return $this->add(new Checkbox($name, $label));
+    }
+
+    public function submit(string $label = 'Submit', string $name = 'submit'): Submit
+    {
+        return $this->add(new Submit($label, $name));
+    }
+
+    /**
+     * Adds any field instance, including custom field classes that
+     * implement FieldInterface.
+     *
+     * @template T of FieldInterface
+     *
+     * @param T $field
+     *
+     * @return T
+     */
+    public function add(FieldInterface $field): FieldInterface
+    {
+        $name = $field->getName();
+
+        if (in_array($name, self::RESERVED_FIELD_NAMES, true) || $name === $this->csrfTokenName()) {
+            throw FormException::forReservedFieldName($this->name, $name);
+        }
+
+        if (array_key_exists($name, $this->fields)) {
+            throw FormException::forDuplicateField($this->name, $name);
+        }
+
+        if ($field instanceof Field) {
+            $field->setParent($this);
+        }
+
+        $this->fields[$name] = $field;
+
+        return $field;
+    }
+
+    /**
+     * Removes a field, for example a password field on an edit form that
+     * shares its definition with the create form.
+     */
+    public function remove(string ...$names): static
+    {
+        foreach ($names as $name) {
+            unset($this->fields[$name]);
+        }
+
+        return $this;
+    }
+
+    public function has(string $name): bool
+    {
+        return array_key_exists($name, $this->fields);
+    }
+
+    public function getField(string $name): FieldInterface
+    {
+        if (! array_key_exists($name, $this->fields)) {
+            throw FormException::forUnknownField($this->name, $name);
+        }
+
+        return $this->fields[$name];
+    }
+
+    /**
+     * All fields in definition order.
+     *
+     * @return array<string, FieldInterface>
+     */
+    public function getFields(): array
+    {
+        return $this->fields;
+    }
+
+    /**
+     * Fields whose values belong in validated() data: everything except
+     * buttons and disabled fields.
+     *
+     * @return array<string, FieldInterface>
+     */
+    public function getSubmittableFields(): array
+    {
+        return array_filter(
+            $this->fields,
+            static fn (FieldInterface $field): bool => $field->isSubmittable(),
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Data
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fills the form with existing data, typically a database row or Entity
+     * on an edit screen. Submitted data and old input still take priority.
+     *
+     * @param array<array-key, mixed>|object $data
+     */
+    public function fill(array|object $data): static
+    {
+        $this->filled = $this->toDataArray($data);
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getFilled(): array
+    {
+        return $this->filled;
+    }
+
+    /**
+     * Sets the data of the current submission. validate() does this from the
+     * request; calling it directly is useful in tests and APIs.
+     *
+     * @param array<array-key, mixed> $data
+     */
+    public function setSubmittedData(array $data): static
+    {
+        $submitted = [];
+
+        foreach ($data as $key => $value) {
+            $submitted[(string) $key] = $value;
+        }
+
+        $this->submitted = $submitted;
+
+        return $this;
+    }
+
+    /**
+     * Forgets the current submission, for example to show a fresh form after
+     * a successful save without redirecting.
+     */
+    public function clearSubmittedData(): static
+    {
+        $this->submitted = null;
+
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getSubmittedData(): ?array
+    {
+        return $this->submitted;
+    }
+
+    public function hasSubmission(): bool
+    {
+        return $this->submitted !== null;
+    }
+
+    /**
+     * Replaces the session old input with explicit data, or with no old input
+     * when null is passed. Mainly useful in tests.
+     *
+     * @param array<array-key, mixed>|null $input
+     */
+    public function setOldInput(?array $input): static
+    {
+        $this->oldInput       = $input === null ? null : $this->stringKeys($input);
+        $this->oldInputLoaded = true;
+
+        return $this;
+    }
+
+    /**
+     * Whether a set of request data was produced by this form. Data carrying
+     * the hidden form key must name this form; data without it counts as this
+     * form's when it contains at least one of this form's field names.
+     *
+     * @param array<array-key, mixed> $input
+     */
+    public function ownsInput(array $input): bool
+    {
+        if (array_key_exists(self::FORM_KEY, $input)) {
+            return is_scalar($input[self::FORM_KEY]) && (string) $input[self::FORM_KEY] === $this->name;
+        }
+
+        foreach (array_keys($this->getSubmittableFields()) as $name) {
+            if (array_key_exists($name, $input)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Value to show in a field, resolved in priority order: submitted data,
+     * old input, filled data, then the field default.
+     *
+     * Once a submission (or old input) belongs to this form, a key missing
+     * from it is treated as empty rather than falling back to filled data.
+     * That is what makes an unticked checkbox render unticked.
+     */
+    public function getValue(string $name): mixed
+    {
+        $field = $this->getField($name);
+
+        if (! $field->shouldRepopulate()) {
+            return null;
+        }
+
+        if ($this->submitted !== null) {
+            return array_key_exists($name, $this->submitted)
+                ? $this->submitted[$name]
+                : $field->valueWhenMissing($this->config);
+        }
+
+        $old = $this->getOldInput();
+
+        if ($old !== null) {
+            return array_key_exists($name, $old)
+                ? $old[$name]
+                : $field->valueWhenMissing($this->config);
+        }
+
+        if (array_key_exists($name, $this->filled)) {
+            return $this->filled[$name];
+        }
+
+        return $field->getDefault();
+    }
+
+    /**
+     * Resolved values of every field, keyed by name.
+     *
+     * @return array<string, mixed>
+     */
+    public function getValues(): array
+    {
+        $values = [];
+
+        foreach (array_keys($this->fields) as $name) {
+            $values[$name] = $this->getValue($name);
+        }
+
+        return $values;
+    }
+
+    /**
+     * Old input from the session that belongs to this form, or null.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getOldInput(): ?array
+    {
+        if (! $this->config->useOldInput) {
+            return null;
+        }
+
+        if (! $this->oldInputLoaded) {
+            $this->oldInput       = $this->loadOldInput();
+            $this->oldInputLoaded = true;
+        }
+
+        if ($this->oldInput === null || ! $this->ownsInput($this->oldInput)) {
+            return null;
+        }
+
+        return $this->oldInput;
+    }
+
+    /**
+     * Plain array description of the form and its fields.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'name'       => $this->name,
+            'id'         => $this->id,
+            'action'     => $this->action,
+            'method'     => $this->method,
+            'multipart'  => $this->multipart,
+            'attributes' => array_map(
+                static fn (mixed $value): mixed => $value instanceof Stringable ? (string) $value : $value,
+                $this->attributes,
+            ),
+            'classes' => $this->classes,
+            'fields'  => array_values(array_map(
+                static fn (FieldInterface $field): array => $field->toArray(),
+                $this->fields,
+            )),
+        ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Extension points
+    // -------------------------------------------------------------------------
+
+    /**
+     * Override in form classes to declare fields. Called by the constructor.
+     */
+    protected function define(): void
+    {
+    }
+
+    /**
+     * Name used when none is given: the class name without a "Form" suffix,
+     * in snake_case. BookingForm becomes "booking", UserProfileForm becomes
+     * "user_profile", and the base class becomes "form".
+     */
+    protected static function defaultName(): string
+    {
+        $short = substr((string) strrchr('\\' . static::class, '\\'), 1);
+
+        if ($short !== 'Form' && str_ends_with($short, 'Form')) {
+            $short = substr($short, 0, -4);
+        }
+
+        if ($short === '' || str_contains($short, '@anonymous')) {
+            return 'form';
+        }
+
+        return strtolower((string) preg_replace('/(?<!^)[A-Z]/', '_$0', $short));
+    }
+
+    /**
+     * Resolves the config, preferring the app's App\Config\Forms override.
+     */
+    protected static function resolveConfig(): Forms
+    {
+        $class = class_exists(\Config\Forms::class) && is_a(\Config\Forms::class, Forms::class, true)
+            ? \Config\Forms::class
+            : Forms::class;
+
+        $config = config($class);
+
+        return $config instanceof Forms ? $config : new Forms();
+    }
+
+    /**
+     * Reads old input stored by redirect()->withInput(). POST values take
+     * priority over GET values, as in CodeIgniter's old() helper.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function loadOldInput(): ?array
+    {
+        $old = service('session')->get('_ci_old_input');
+
+        if (! is_array($old)) {
+            return null;
+        }
+
+        $get  = is_array($old['get'] ?? null) ? $old['get'] : [];
+        $post = is_array($old['post'] ?? null) ? $old['post'] : [];
+
+        $merged = array_merge($get, $post);
+
+        return $merged === [] ? null : $this->stringKeys($merged);
+    }
+
+    // -------------------------------------------------------------------------
+    // Internals
+    // -------------------------------------------------------------------------
+
+    private function csrfTokenName(): ?string
+    {
+        return function_exists('csrf_token') ? csrf_token() : null;
+    }
+
+    private function validateName(string $name): string
+    {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_\-]*$/', $name) !== 1) {
+            throw FormException::forInvalidFormName($name);
+        }
+
+        return $name;
+    }
+
+    /**
+     * @param array<array-key, mixed>|object $data
+     *
+     * @return array<string, mixed>
+     */
+    private function toDataArray(array|object $data): array
+    {
+        if (is_array($data)) {
+            return $this->stringKeys($data);
+        }
+
+        if (method_exists($data, 'toArray')) {
+            $array = $data->toArray();
+
+            if (is_array($array)) {
+                return $this->stringKeys($array);
+            }
+        }
+
+        if ($data instanceof Traversable) {
+            return $this->stringKeys(iterator_to_array($data));
+        }
+
+        if ($data instanceof \stdClass || get_object_vars($data) !== []) {
+            return $this->stringKeys(get_object_vars($data));
+        }
+
+        throw FormException::forInvalidFillData($this->name, get_debug_type($data));
+    }
+
+    /**
+     * @param array<array-key, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    private function stringKeys(array $data): array
+    {
+        $result = [];
+
+        foreach ($data as $key => $value) {
+            $result[(string) $key] = $value;
+        }
+
+        return $result;
+    }
+}

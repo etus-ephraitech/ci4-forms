@@ -89,8 +89,59 @@ class FormException extends RuntimeException
         return new static(sprintf('Field "%s" is a submit button; buttons are never validated.', $field));
     }
 
+    public static function forFieldWithoutForm(string $field): static
+    {
+        return new static(sprintf('Field "%s" does not belong to a form.', $field));
+    }
+
     public static function forUndefinedMethod(string $class, string $method): static
     {
         return new static(sprintf('Call to undefined method %s::%s().', $class, $method));
+    }
+
+    public static function forInvalidFormName(string $name): static
+    {
+        return new static(sprintf(
+            'Form name "%s" is invalid. Use a letter or underscore first, then letters, digits, underscores or hyphens.',
+            $name,
+        ));
+    }
+
+    public static function forDuplicateField(string $form, string $field): static
+    {
+        return new static(sprintf('Form "%s" already has a field named "%s".', $form, $field));
+    }
+
+    public static function forUnknownField(string $form, string $field): static
+    {
+        return new static(sprintf('Form "%s" has no field named "%s".', $form, $field));
+    }
+
+    public static function forReservedFieldName(string $form, string $field): static
+    {
+        return new static(sprintf('Form "%s": the field name "%s" is reserved by the package.', $form, $field));
+    }
+
+    public static function forReservedFormAttribute(string $form, string $attribute): static
+    {
+        return new static(sprintf(
+            'Form "%s": the "%s" attribute is managed by the package; use its dedicated method instead.',
+            $form,
+            $attribute,
+        ));
+    }
+
+    public static function forInvalidFormAttributeName(string $form, string $attribute): static
+    {
+        return new static(sprintf('Form "%s": "%s" is not a valid HTML attribute name.', $form, $attribute));
+    }
+
+    public static function forInvalidFillData(string $form, string $type): static
+    {
+        return new static(sprintf(
+            'Form "%s": fill() expects an array or an object (such as an Entity), %s given.',
+            $form,
+            $type,
+        ));
     }
 }
