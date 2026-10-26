@@ -1,0 +1,57 @@
+{
+    "name": "ephraitech/ci4-forms",
+    "description": "Developer-side form builder for CodeIgniter 4: define forms in code, render them with Bootstrap 5, validate with CI4 rules and get clean validated data back.",
+    "type": "library",
+    "keywords": [
+        "codeigniter",
+        "codeigniter4",
+        "ci4",
+        "forms",
+        "form-builder",
+        "validation",
+        "bootstrap5"
+    ],
+    "homepage": "https://github.com/etus-ephraitech/ci4-forms",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ephraitech Unified Solutions",
+            "homepage": "https://github.com/etus-ephraitech"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/etus-ephraitech/ci4-forms/issues",
+        "source": "https://github.com/etus-ephraitech/ci4-forms"
+    },
+    "require": {
+        "php": "^8.2"
+    },
+    "require-dev": {
+        "codeigniter4/framework": "^4.5",
+        "phpunit/phpunit": "^10.5.16 || ^11.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ephraitech\\Forms\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ephraitech\\Forms\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "0.1.x-dev"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
