@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/etus-ephraitech/ci4-forms/actions/workflows/tests.yml/badge.svg)](https://github.com/etus-ephraitech/ci4-forms/actions/workflows/tests.yml)
 
-A form builder for CodeIgniter 4. Define a form once in PHP and the package
+A form builder for CodeIgniter 4.7+. Define a form once in PHP and the package
 renders it with Bootstrap 5, validates it with CodeIgniter's own Validation
 service, repopulates input after errors, and hands back only clean data for
 the fields you defined.
@@ -57,7 +57,10 @@ $this->bookingModel->insert($form->validated());
 ## Requirements
 
 - PHP 8.2 or newer
-- CodeIgniter 4.6 or newer (tested on 4.6 and 4.7)
+- CodeIgniter 4.7 or newer
+
+CodeIgniter 4.6 is not supported: every 4.6 release has published security
+advisories, and Composer blocks installing them by default. Upgrade to 4.7.
 
 ## Installation
 

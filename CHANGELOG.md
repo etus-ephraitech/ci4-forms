@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-10-27
 
-First release.
+First release. Requires PHP 8.2+ and CodeIgniter 4.7+ (every 4.6 release has published
+security advisories).
 
 ### Added
 
@@ -50,7 +51,7 @@ First release.
   text linked through `aria-describedby` and `aria-invalid`.
 - `php spark forms:publish` command (`--theme`, `--config`, `--force`) to copy the theme views
   and an app config file into the application; existing files are kept unless forced.
-- GitHub Actions workflow testing PHP 8.2 to 8.5 against CodeIgniter 4.6 and 4.7.
+- GitHub Actions workflow testing PHP 8.2 to 8.5 against CodeIgniter 4.7.
 
 [Unreleased]: https://github.com/etus-ephraitech/ci4-forms/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/etus-ephraitech/ci4-forms/releases/tag/v0.1.0
