@@ -12,6 +12,9 @@ use Ephraitech\Forms\Fields\Checkboxes;
 use Ephraitech\Forms\Fields\InputField;
 use Ephraitech\Forms\Fields\Radio;
 use Ephraitech\Forms\Fields\Select;
+use Ephraitech\Forms\Layout\Container;
+use Ephraitech\Forms\Layout\Fieldset;
+use Ephraitech\Forms\Layout\Row;
 use Stringable;
 
 /**
@@ -153,18 +156,108 @@ class Renderer
     }
 
     /**
-     * Several fields in order; all fields when no names are given.
+     * The named fields in the given order, without layout. With no names,
+     * every field in its layout: rows, fieldsets and all.
      */
     public function fields(Form $form, string ...$names): string
     {
-        $names = $names === [] ? array_keys($form->getFields()) : $names;
-        $html  = '';
+        if ($names === []) {
+            return $this->nodes($form, $form->getLayout());
+        }
+
+        $html = '';
 
         foreach ($names as $name) {
             $html .= $this->field($form, $name);
         }
 
         return $html;
+    }
+
+    /**
+     * @param list<Container|string> $nodes
+     */
+    protected function nodes(Form $form, array $nodes): string
+    {
+        $html = '';
+
+        foreach ($nodes as $node) {
+            $html .= $this->node($form, $node);
+        }
+
+        return $html;
+    }
+
+    protected function node(Form $form, Container|string $node): string
+    {
+        return match (true) {
+            is_string($node)          => $form->has($node) ? $this->field($form, $node) : '',
+            $node->isEmpty()          => '',
+            $node instanceof Row      => $this->row($form, $node),
+            $node instanceof Fieldset => $this->fieldsetGroup($form, $node),
+            default                   => $this->nodes($form, $node->getChildren()),
+        };
+    }
+
+    /**
+     * A row: each child in a column sized by its width. Hidden fields are
+     * placed without a column, since they take no space.
+     */
+    protected function row(Form $form, Row $row): string
+    {
+        $columns = [];
+
+        foreach ($row->getChildren() as $child) {
+            $html = $this->node($form, $child);
+
+            if ($html === '') {
+                continue;
+            }
+
+            if (is_string($child) && $form->getField($child)->getType() === 'hidden') {
+                $columns[] = ['class' => null, 'html' => $html];
+
+                continue;
+            }
+
+            $width = is_string($child) ? $form->getField($child)->getWidth() : $child->getWidth();
+
+            $columns[] = [
+                'class' => $width === null
+                    ? $this->config->classFor('column_auto')
+                    : str_replace('{width}', (string) $width, $this->config->classFor('column')),
+                'html' => $html,
+            ];
+        }
+
+        $classes = $this->joinClasses($this->config->classFor('row'), ...$row->getClasses());
+
+        return $this->view('layout_row', [
+            'form'    => $form,
+            'row'     => $row,
+            'columns' => $columns,
+            'e'       => self::escape(...),
+            'class'   => fn (string $key): string => $this->classAttribute($key === 'row' ? $classes : $this->config->classFor($key)),
+        ]);
+    }
+
+    /**
+     * A titled section around its children.
+     */
+    protected function fieldsetGroup(Form $form, Fieldset $fieldset): string
+    {
+        $classes = $this->joinClasses($this->config->classFor('section'), ...$fieldset->getClasses());
+
+        return $this->view('layout_fieldset', [
+            'form'        => $form,
+            'fieldset'    => $fieldset,
+            'legend'      => $fieldset->getLegend(),
+            'description' => $fieldset->getDescription(),
+            'id'          => $fieldset->getId(),
+            'content'     => $this->nodes($form, $fieldset->getChildren()),
+            'e'           => self::escape(...),
+            'class'       => fn (string $key): string => $this->classAttribute($key === 'section' ? $classes : $this->config->classFor($key)),
+        ]);
     }
 
     /**

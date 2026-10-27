@@ -78,6 +78,12 @@ interface FieldInterface
     public function getHelp(): ?string;
 
     /**
+     * Column width (1 to 12) when the field sits inside a row, or null to
+     * share the row's space equally.
+     */
+    public function getWidth(): ?int;
+
+    /**
      * Element id: the explicit id if one was set, otherwise generated from
      * the name, optionally prefixed (the form name, to keep ids unique).
      */

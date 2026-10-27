@@ -125,6 +125,16 @@ class FormException extends RuntimeException
         return new static(sprintf('Could not publish to "%s": %s', $path, $reason));
     }
 
+    public static function forInvalidWidth(string $subject, int $width): static
+    {
+        return new static(sprintf('Width of %s must be between 1 and 12 columns, %d given.', $subject, $width));
+    }
+
+    public static function forLayoutWithoutForm(string $type): static
+    {
+        return new static(sprintf('This %s does not belong to a form.', $type));
+    }
+
     public static function forUndefinedMethod(string $class, string $method): static
     {
         return new static(sprintf('Call to undefined method %s::%s().', $class, $method));

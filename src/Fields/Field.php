@@ -72,6 +72,8 @@ abstract class Field implements FieldInterface
 
     protected ?string $help = null;
 
+    protected ?int $width = null;
+
     protected ?string $id = null;
 
     protected mixed $default = null;
@@ -271,6 +273,20 @@ abstract class Field implements FieldInterface
         return $this;
     }
 
+    /**
+     * Column width (1 to 12) inside a row; ignored outside rows.
+     */
+    public function width(?int $columns): static
+    {
+        if ($columns !== null && ($columns < 1 || $columns > 12)) {
+            throw FormException::forInvalidWidth('field "' . $this->name . '"', $columns);
+        }
+
+        $this->width = $columns;
+
+        return $this;
+    }
+
     public function id(?string $id): static
     {
         $this->id = $id === null || trim($id) === '' ? null : trim($id);
@@ -371,6 +387,11 @@ abstract class Field implements FieldInterface
     public function getHelp(): ?string
     {
         return $this->help;
+    }
+
+    public function getWidth(): ?int
+    {
+        return $this->width;
     }
 
     public function getId(string $prefix = ''): string
@@ -485,6 +506,7 @@ abstract class Field implements FieldInterface
             ),
             'classes'     => $this->classes,
             'help'        => $this->help,
+            'width'       => $this->width,
             'id'          => $this->id,
             'default'     => $this->default,
             'placeholder' => $this->placeholder,

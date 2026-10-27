@@ -56,6 +56,7 @@ class Forms extends BaseConfig
      * - required_marker: Raw HTML appended to labels of required fields.
      *                    It is developer-controlled and NOT escaped.
      * - classes:         CSS classes the renderer applies, keyed by element.
+     *                    In "column", {width} becomes the field's width.
      *
      * @var array<string, array{views: string, required_marker?: string, classes?: array<string, string>}>
      */
@@ -83,6 +84,12 @@ class Forms extends BaseConfig
                 'reselect'         => 'form-text text-warning-emphasis',
                 'submit'           => 'btn btn-primary',
                 'error_summary'    => 'alert alert-danger',
+                'row'                 => 'row',
+                'column'              => 'col-md-{width}',
+                'column_auto'         => 'col-md',
+                'section'             => 'mb-4',
+                'section_legend'      => 'h6 mb-3',
+                'section_description' => 'text-body-secondary small mb-3',
             ],
         ],
     ];

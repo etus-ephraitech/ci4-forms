@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Theme templates missing from a theme's views folder fall back to the package's bundled copy
   of that theme, so views published before an upgrade keep working with new field types.
   `php spark forms:publish` adds the missing templates without touching customised ones.
+- Layout: `row()` places fields side by side and `fieldset()` groups them under a titled
+  section (`description()`, `id()`); both nest and take `addClass()`. Fields and fieldsets get
+  `width(1-12)` for their column inside a row; fields without a width share the row. Layout is
+  defined in the form class and rendered by `<?= $form ?>` and `fields()`; fields themselves
+  stay a flat list, so values, validation and `field()` are unaffected.
+- `Form::getLayout()`, `Layout\Row`, `Layout\Fieldset`; new `layout_row` and
+  `layout_fieldset` views and theme classes `row`, `column` (`{width}` placeholder),
+  `column_auto`, `section`, `section_legend`, `section_description`.
 
 ### Changed
 
@@ -43,10 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `app/Config/Forms.php` to restore the 0.1 behaviour, or opt single fields out with
   `->strictOptions(false)`. Existing `in_list` rules keep working; they are now optional for
   option fields.
-- `FieldInterface` has two new methods, `getEachRules()` and `isMultiple()`. Custom fields
+- `FieldInterface` has three new methods: `getEachRules()`, `isMultiple()` and `getWidth()`. Custom fields
   extending `Fields\Field` get both automatically; classes implementing the interface
   directly must add them.
 - `getOptionId()` moved from `Radio` into the shared `HasOptions` trait.
+- `fields()` with no arguments now renders the form's layout (rows and fieldsets) instead of
+  a flat list. `fields('a', 'b')` with names is unchanged. Published `form.php` views get
+  layouts automatically.
 - The `field_select` view uses `$inputName` and `$values`. Re-publish the views
   (`php spark forms:publish --force`) or apply the same change if you customised it.
 

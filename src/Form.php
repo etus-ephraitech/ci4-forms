@@ -28,6 +28,9 @@ use Ephraitech\Forms\Fields\Tel;
 use Ephraitech\Forms\Fields\Text;
 use Ephraitech\Forms\Fields\Textarea;
 use Ephraitech\Forms\Fields\Url;
+use Ephraitech\Forms\Layout\Container;
+use Ephraitech\Forms\Layout\Fieldset;
+use Ephraitech\Forms\Layout\Row;
 use Ephraitech\Forms\Support\RuleParser;
 use Stringable;
 use Traversable;
@@ -112,6 +115,20 @@ class Form implements Stringable
      * @var array<string, FieldInterface>
      */
     protected array $fields = [];
+
+    /**
+     * Display order: field names and layout groups at the top level.
+     *
+     * @var list<Container|string>
+     */
+    protected array $layout = [];
+
+    /**
+     * Groups currently being defined, innermost last.
+     *
+     * @var list<Container>
+     */
+    private array $openContainers = [];
 
     /**
      * @var array<string, mixed>
@@ -525,8 +542,57 @@ class Form implements Stringable
         }
 
         $this->fields[$name] = $field;
+        $this->placeInLayout($name);
 
         return $field;
+    }
+
+    // -------------------------------------------------------------------------
+    // Layout
+    // -------------------------------------------------------------------------
+
+    /**
+     * Places the fields defined inside $define side by side:
+     *
+     *     $this->row(function () {
+     *         $this->text('first_name')->width(6);
+     *         $this->text('last_name')->width(6);
+     *     });
+     *
+     * $define receives the form, which suits arrow functions and inline
+     * forms. Rows and fieldsets can be nested.
+     *
+     * @param \Closure(static): mixed $define
+     */
+    public function row(\Closure $define): Row
+    {
+        return $this->group(new Row(), $define);
+    }
+
+    /**
+     * Groups the fields defined inside $define under a titled section:
+     *
+     *     $this->fieldset('Delivery address', function () {
+     *         $this->text('street');
+     *         $this->text('city');
+     *     })->description('Where should we send the finished suit?');
+     *
+     * @param \Closure(static): mixed $define
+     */
+    public function fieldset(string $legend, \Closure $define): Fieldset
+    {
+        return $this->group(new Fieldset($legend), $define);
+    }
+
+    /**
+     * Top-level layout: field names and groups in display order. Every field
+     * appears exactly once, either here or inside a group.
+     *
+     * @return list<Container|string>
+     */
+    public function getLayout(): array
+    {
+        return $this->layout;
     }
 
     /**
@@ -537,6 +603,22 @@ class Form implements Stringable
     {
         foreach ($names as $name) {
             unset($this->fields[$name]);
+
+            $layout = [];
+
+            foreach ($this->layout as $node) {
+                if ($node === $name) {
+                    continue;
+                }
+
+                if ($node instanceof Container) {
+                    $node->removeField($name);
+                }
+
+                $layout[] = $node;
+            }
+
+            $this->layout = $layout;
         }
 
         return $this;
@@ -1157,6 +1239,10 @@ class Form implements Stringable
                 static fn (FieldInterface $field): array => $field->toArray(),
                 $this->fields,
             )),
+            'layout' => array_map(
+                static fn (Container|string $node): array|string => $node instanceof Container ? $node->toArray() : $node,
+                $this->layout,
+            ),
         ];
     }
 
@@ -1405,6 +1491,52 @@ class Form implements Stringable
         }
 
         return $filtered;
+    }
+
+    /**
+     * Adds a group where fields are currently being placed, runs $define
+     * with the group open, then closes it even if $define throws.
+     *
+     * @template T of Container
+     *
+     * @param T $container
+     *
+     * @return T
+     */
+    private function group(Container $container, \Closure $define): Container
+    {
+        $container->setParent($this);
+
+        $parent = end($this->openContainers);
+
+        if ($parent instanceof Container) {
+            $parent->addChild($container);
+        } else {
+            $this->layout[] = $container;
+        }
+
+        $this->openContainers[] = $container;
+
+        try {
+            $define($this);
+        } finally {
+            array_pop($this->openContainers);
+        }
+
+        return $container;
+    }
+
+    private function placeInLayout(string $name): void
+    {
+        $parent = end($this->openContainers);
+
+        if ($parent instanceof Container) {
+            $parent->addChild($name);
+
+            return;
+        }
+
+        $this->layout[] = $name;
     }
 
     private function csrfTokenName(): ?string
