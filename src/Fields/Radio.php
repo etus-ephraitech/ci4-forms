@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Ephraitech\Forms\Fields;
 
+use Ephraitech\Forms\Contracts\ChoiceFieldInterface;
 use Ephraitech\Forms\Fields\Concerns\HasOptions;
 
 /**
  * A group of radio buttons sharing one name; the user picks one option.
  */
-class Radio extends Field
+class Radio extends Field implements ChoiceFieldInterface
 {
     use HasOptions;
 

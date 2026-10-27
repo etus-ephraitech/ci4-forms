@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ephraitech\Forms\Fields;
 
+use Ephraitech\Forms\Contracts\ChoiceFieldInterface;
 use Ephraitech\Forms\Fields\Concerns\HasOptions;
 
 /**
@@ -16,7 +17,7 @@ use Ephraitech\Forms\Fields\Concerns\HasOptions;
  * Validate submitted values against the options, for example with in_list or
  * is_not_unique, because the browser list can be bypassed.
  */
-class Select extends Field
+class Select extends Field implements ChoiceFieldInterface
 {
     use HasOptions;
 

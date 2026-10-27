@@ -80,6 +80,7 @@ class Forms extends BaseConfig
                 'error'            => 'invalid-feedback',
                 'error_block'      => 'invalid-feedback d-block',
                 'help'             => 'form-text',
+                'reselect'         => 'form-text text-warning-emphasis',
                 'submit'           => 'btn btn-primary',
                 'error_summary'    => 'alert alert-danger',
             ],
@@ -143,6 +144,27 @@ class Forms extends BaseConfig
      * stored as NULL rather than ''.
      */
     public bool $emptyStringsToNull = true;
+
+    /**
+     * Reject submitted values that are not among a field's options, for
+     * selects, multi-selects, radios, checkbox groups and single checkboxes.
+     * Browsers only offer the listed options, but any value can be posted,
+     * so this closes a common tampering hole without writing in_list rules.
+     * Fields can opt out with ->strictOptions(false).
+     */
+    public bool $strictOptions = true;
+
+    /**
+     * Message for a value outside the options. {field} becomes the field
+     * label. Override per field with ->messages(['options' => '...']).
+     */
+    public string $strictOptionsMessage = 'Please choose a valid option for {field}.';
+
+    /**
+     * Hint shown under file fields after a failed submission, because
+     * browsers cannot refill file inputs. Set to null to show nothing.
+     */
+    public ?string $fileReselectMessage = 'Please choose the file again.';
 
     /**
      * Value validated() returns for a checkbox that was not ticked. Browsers

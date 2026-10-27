@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ephraitech\Forms\Fields;
 
 use Ephraitech\Forms\Config\Forms;
+use Ephraitech\Forms\Contracts\ChoiceFieldInterface;
 use Ephraitech\Forms\Fields\Concerns\HasOptions;
 
 /**
@@ -15,7 +16,7 @@ use Ephraitech\Forms\Fields\Concerns\HasOptions;
  * rules() applies to the list as a whole ("required" means at least one
  * ticked); eachRules() applies to every ticked value.
  */
-class Checkboxes extends Field
+class Checkboxes extends Field implements ChoiceFieldInterface
 {
     use HasOptions;
 

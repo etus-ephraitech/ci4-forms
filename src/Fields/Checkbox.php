@@ -5,15 +5,21 @@ declare(strict_types=1);
 namespace Ephraitech\Forms\Fields;
 
 use Ephraitech\Forms\Config\Forms;
+use Ephraitech\Forms\Contracts\ChoiceFieldInterface;
+use Ephraitech\Forms\Fields\Concerns\HasStrictOptions;
 
 /**
  * A single on/off checkbox, such as "Active" or "I accept the terms".
  *
  * Browsers send nothing for an unticked checkbox, so validated() fills in the
  * configured unchecked value (0 by default) instead of dropping the key.
+ * With strict option checking, any submitted value other than the checked
+ * value is rejected.
  */
-class Checkbox extends Field
+class Checkbox extends Field implements ChoiceFieldInterface
 {
+    use HasStrictOptions;
+
     public const TYPE = 'checkbox';
 
     public const VIEW = 'field_checkbox';
@@ -35,6 +41,16 @@ class Checkbox extends Field
     public function getCheckedValue(): string
     {
         return $this->checkedValue;
+    }
+
+    /**
+     * The only value a ticked box can send.
+     *
+     * @return list<string>
+     */
+    public function getAllowedValues(): array
+    {
+        return [$this->checkedValue];
     }
 
     public function inline(bool $inline = true): static

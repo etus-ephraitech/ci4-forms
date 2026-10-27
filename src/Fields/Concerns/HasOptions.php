@@ -17,6 +17,8 @@ use Stringable;
  */
 trait HasOptions
 {
+    use HasStrictOptions;
+
     /**
      * @var array<array-key, mixed>|Closure|null
      */
@@ -109,6 +111,16 @@ trait HasOptions
         }
 
         return $values;
+    }
+
+    /**
+     * Every selectable value; see ChoiceFieldInterface.
+     *
+     * @return list<string>
+     */
+    public function getAllowedValues(): array
+    {
+        return $this->getOptionValues();
     }
 
     /**

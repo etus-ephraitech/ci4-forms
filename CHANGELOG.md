@@ -16,9 +16,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CodeIgniter's `name.*` wildcard. `permit_empty` is added automatically so an empty list
   passes; use `rules('required')` to require at least one item.
 - New `field_checkboxes` view; views receive `$inputName`, `$values` and `$multiple`.
+- Strict option checking: submitted values for selects, multi-selects, radios, checkbox
+  groups and single checkboxes must be among the field's options (for a checkbox, its checked
+  value). Controlled by `$strictOptions` and `$strictOptionsMessage` in config, per field with
+  `->strictOptions(bool)` and `->messages(['options' => '...'])`. Errors survive
+  `redirect()->withInput()`.
+- `Contracts\ChoiceFieldInterface` (`getAllowedValues()`, `getStrictOptions()`) for custom
+  fields with a fixed set of values; `Form::usesStrictOptions()`.
+- File uploads: `file()` field with `required()`, `multiple()`, `maxSize()` (kilobytes),
+  `extensions()`, `mimes()`, `image()` and `maxDimensions()`, mapped to CodeIgniter's file
+  rules, plus a generated `accept` attribute. Optional file fields are only validated when a
+  file is uploaded. Uploads are never part of `validated()`; get them with
+  `Form::getFile()`, `Form::getFiles()` and `Form::hasUploadedFile()`.
+- Forms with a file field are sent as multipart automatically.
+- After a failed submission, file fields show a "choose the file again" hint
+  (`$fileReselectMessage`, theme class `reselect`), since browsers cannot refill them.
+- `Contracts\FileFieldInterface` for custom upload fields; new `field_file` view.
+- Theme templates missing from a theme's views folder fall back to the package's bundled copy
+  of that theme, so views published before an upgrade keep working with new field types.
+  `php spark forms:publish` adds the missing templates without touching customised ones.
 
 ### Changed
 
+- **Behaviour change:** strict option checking is on by default. A form that accepted values
+  outside a field's options in 0.1 now rejects them. Set `$strictOptions = false` in
+  `app/Config/Forms.php` to restore the 0.1 behaviour, or opt single fields out with
+  `->strictOptions(false)`. Existing `in_list` rules keep working; they are now optional for
+  option fields.
 - `FieldInterface` has two new methods, `getEachRules()` and `isMultiple()`. Custom fields
   extending `Fields\Field` get both automatically; classes implementing the interface
   directly must add them.

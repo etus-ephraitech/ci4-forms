@@ -110,6 +110,16 @@ class FormException extends RuntimeException
         ));
     }
 
+    public static function forInvalidFileSetting(string $field, string $reason): static
+    {
+        return new static(sprintf('File field "%s": %s', $field, $reason));
+    }
+
+    public static function forNotAFileField(string $form, string $field): static
+    {
+        return new static(sprintf('Form "%s": field "%s" is not a file field.', $form, $field));
+    }
+
     public static function forPublishFailed(string $path, string $reason): static
     {
         return new static(sprintf('Could not publish to "%s": %s', $path, $reason));

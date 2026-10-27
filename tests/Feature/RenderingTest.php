@@ -405,6 +405,35 @@ final class RenderingTest extends CIUnitTestCase
         $this->assertSame('<input class="input" name="name">', trim($this->stripDebug($form->field('name'))));
     }
 
+    public function testMissingThemeTemplatesFallBackToTheBundledCopy(): void
+    {
+        // Simulates views published before an upgrade that added new
+        // templates: only field_input exists in the theme's folder.
+        service('autoloader')->addNamespace('FormsTestViews', dirname(__DIR__) . '/Support/Views');
+        $this->config->themes['bootstrap5']['views'] = 'FormsTestViews\\partial';
+
+        $form = $this->make();
+        $form->text('name');
+        $form->checkboxes('tags', 'Tags', ['a' => 'A']);
+
+        $this->assertStringContainsString('data-theme="partial"', $form->field('name'), 'published template is used');
+        $this->assertStringContainsString('<fieldset class="mb-3">', $form->field('tags'), 'missing template comes from the package');
+    }
+
+    public function testMissingTemplateOfUnknownThemeStillFails(): void
+    {
+        service('autoloader')->addNamespace('FormsTestViews', dirname(__DIR__) . '/Support/Views');
+        $this->config->themes['custom'] = ['views' => 'FormsTestViews\\partial'];
+        $this->config->theme            = 'custom';
+
+        $form = $this->make();
+        $form->checkboxes('tags', 'Tags', ['a' => 'A']);
+
+        $this->expectException(\CodeIgniter\View\Exceptions\ViewException::class);
+
+        $form->field('tags');
+    }
+
     /**
      * Removes the view debug comments CodeIgniter adds outside production.
      */

@@ -6,6 +6,7 @@ namespace Ephraitech\Forms;
 
 use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Contracts\FieldInterface;
+use Ephraitech\Forms\Contracts\FileFieldInterface;
 use Ephraitech\Forms\Fields\Checkbox;
 use Ephraitech\Forms\Fields\Checkboxes;
 use Ephraitech\Forms\Fields\InputField;
@@ -36,7 +37,8 @@ use Stringable;
  * - $class                  $class('group') returns ' class="..."' or ''
  *
  * plus, by field type: $inputType, $placeholder, $options, $optionIds,
- * $checked, $checkedValue and $inline.
+ * $checked, $checkedValue, $inline, and for file fields $reselect (the
+ * "choose the file again" hint or null) and $reselectId.
  */
 class Renderer
 {
@@ -52,6 +54,13 @@ class Renderer
         'submit'   => 'submit',
         'hidden'   => '',
     ];
+
+    /**
+     * Resolved view names, keyed by theme and template.
+     *
+     * @var array<string, string>
+     */
+    private array $resolvedViews = [];
 
     public function __construct(protected Forms $config)
     {
@@ -213,8 +222,12 @@ class Renderer
         $helpId  = $id . '_help';
         $type    = $field->getType();
 
+        $reselect   = $this->reselectHint($form, $field, $error);
+        $reselectId = $id . '_reselect';
+
         $describedBy = array_filter([
             $error !== null && ! $bare ? $errorId : null,
+            $reselect !== null && ! $bare ? $reselectId : null,
             $help !== null && ! $bare ? $helpId : null,
         ]);
 
@@ -224,9 +237,9 @@ class Renderer
         $attributes = array_merge(
             $field->ruleAttributes($this->config),
             $field->getAttributes(),
+            $type === 'select' && $multiple ? ['multiple' => true] : [],
             [
-                'multiple'         => $type === 'select' && $multiple,
-                'placeholder'      => in_array($type, ['select', 'radio', 'checkbox', 'checkboxes', 'hidden', 'submit'], true) ? null : $field->getPlaceholder(),
+                'placeholder'      => in_array($type, ['select', 'radio', 'checkbox', 'checkboxes', 'hidden', 'submit', 'file'], true) ? null : $field->getPlaceholder(),
                 'disabled'         => $field->isDisabled(),
                 'aria-invalid'     => $error !== null ? 'true' : null,
                 'aria-describedby' => $describedBy === [] ? null : implode(' ', $describedBy),
@@ -250,6 +263,8 @@ class Renderer
             'errorId'        => $errorId,
             'help'           => $help,
             'helpId'         => $helpId,
+            'reselect'       => $reselect,
+            'reselectId'     => $reselectId,
             'attributes'     => self::attributes($attributes),
             'bare'           => $bare,
             'e'              => self::escape(...),
@@ -311,7 +326,24 @@ class Renderer
             'check_label' => $this->config->classFor('check_label'),
             'error'       => $this->config->classFor($isGroup ? 'error_block' : 'error'),
             'help'        => $this->config->classFor('help'),
+            'reselect'    => $this->config->classFor('reselect'),
         ];
+    }
+
+    /**
+     * The "choose the file again" hint for a file field: shown when the form
+     * came back with errors (directly or after a redirect) and the field has
+     * no error of its own, since browsers clear file inputs.
+     */
+    protected function reselectHint(Form $form, FieldInterface $field, ?string $error): ?string
+    {
+        if (! $field instanceof FileFieldInterface || $error !== null || $this->config->fileReselectMessage === null) {
+            return null;
+        }
+
+        $returned = $form->hasSubmission() || $form->getOldInput() !== null;
+
+        return $returned && $form->hasErrors() ? $this->config->fileReselectMessage : null;
     }
 
     /**
@@ -321,7 +353,54 @@ class Renderer
      */
     protected function view(string $template, array $data): string
     {
-        return view($this->config->viewPath($template), $data, ['saveData' => false]);
+        return view($this->resolveView($template), $data, ['saveData' => false]);
+    }
+
+    /**
+     * The view to load for a template: the active theme's own file, or the
+     * package's bundled copy of that theme when the theme's views folder
+     * lacks it.
+     *
+     * This keeps published (customised) views working after an upgrade that
+     * adds templates for new field types: the new templates come from the
+     * package until they are published too (php spark forms:publish adds
+     * missing files without touching existing ones).
+     */
+    protected function resolveView(string $template): string
+    {
+        $key = $this->config->theme . '|' . $template;
+
+        if (isset($this->resolvedViews[$key])) {
+            return $this->resolvedViews[$key];
+        }
+
+        $view = $this->config->viewPath($template);
+
+        if (! $this->viewExists($view)) {
+            $theme   = $this->config->theme;
+            $bundled = __DIR__ . '/Views/' . $theme . '/' . ltrim($template, '/\\') . '.php';
+
+            if (is_file($bundled)) {
+                $view = 'Ephraitech\\Forms\\Views\\' . $theme . '/' . ltrim($template, '/\\');
+            }
+        }
+
+        return $this->resolvedViews[$key] = $view;
+    }
+
+    /**
+     * Whether CodeIgniter can find a view, either in the app's view folder
+     * or through a namespace.
+     */
+    protected function viewExists(string $view): bool
+    {
+        $directory = rtrim((new \Config\Paths())->viewDirectory, '/\\');
+
+        if (is_file($directory . '/' . $view . '.php')) {
+            return true;
+        }
+
+        return str_contains($view, '\\') && service('locator')->locateFile($view, 'Views') !== false;
     }
 
     protected function resolveAction(?string $action): ?string

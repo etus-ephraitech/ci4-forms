@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace Ephraitech\Forms;
 
+use CodeIgniter\HTTP\Files\UploadedFile;
 use CodeIgniter\HTTP\IncomingRequest;
 use CodeIgniter\Validation\ValidationInterface;
 use Ephraitech\Forms\Config\Forms;
+use Ephraitech\Forms\Contracts\ChoiceFieldInterface;
 use Ephraitech\Forms\Contracts\FieldInterface;
+use Ephraitech\Forms\Contracts\FileFieldInterface;
 use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Fields\Checkbox;
 use Ephraitech\Forms\Fields\Checkboxes;
 use Ephraitech\Forms\Fields\Date;
 use Ephraitech\Forms\Fields\Email;
 use Ephraitech\Forms\Fields\Field;
+use Ephraitech\Forms\Fields\File;
 use Ephraitech\Forms\Fields\Hidden;
 use Ephraitech\Forms\Fields\Number;
 use Ephraitech\Forms\Fields\Password;
@@ -340,9 +344,23 @@ class Form implements Stringable
         return $this->id ?? (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', $this->name);
     }
 
+    /**
+     * Whether the form is sent as multipart/form-data: when set with
+     * multipart(), and always when it has a file field.
+     */
     public function isMultipart(): bool
     {
-        return $this->multipart;
+        if ($this->multipart) {
+            return true;
+        }
+
+        foreach ($this->fields as $field) {
+            if ($field instanceof FileFieldInterface) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -465,6 +483,14 @@ class Form implements Stringable
         }
 
         return $this->add($field);
+    }
+
+    /**
+     * File upload field. The form becomes multipart automatically.
+     */
+    public function file(string $name, ?string $label = null): File
+    {
+        return $this->add(new File($name, $label));
     }
 
     public function submit(string $label = 'Submit', string $name = 'submit'): Submit
@@ -762,12 +788,13 @@ class Form implements Stringable
         $validation = $this->getValidation();
         $validation->reset();
 
-        $rules = $this->getValidationRules();
+        $values = $this->validationData($this->submitted ?? []);
+        $rules  = $this->getValidationRules();
 
         if ($rules !== []) {
             $validation->setRules($rules);
 
-            if (! $validation->run($this->validationData($this->submitted ?? []))) {
+            if (! $validation->run($values)) {
                 foreach ($validation->getErrors() as $key => $message) {
                     // Errors for list items arrive as "tags.1" or "tags.*";
                     // the first one is reported on the field itself.
@@ -778,7 +805,22 @@ class Form implements Stringable
             }
         }
 
+        $this->checkOptions($values);
+
         return $this->errors === [];
+    }
+
+    /**
+     * Whether strict option checking applies to a field: its own setting,
+     * otherwise the config.
+     */
+    public function usesStrictOptions(FieldInterface $field): bool
+    {
+        if (! $field instanceof ChoiceFieldInterface) {
+            return false;
+        }
+
+        return $field->getStrictOptions() ?? $this->config->strictOptions;
     }
 
     /**
@@ -805,6 +847,13 @@ class Form implements Stringable
         $rules = [];
 
         foreach ($this->getSubmittableFields() as $name => $field) {
+            // CodeIgniter's permit_empty looks at POST data, where files never
+            // appear, so optional uploads are handled here instead: no file,
+            // no rules. Once a file is uploaded every rule applies.
+            if ($field instanceof FileFieldInterface && ! $field->isRequired() && ! $this->hasUploadedFile($name)) {
+                continue;
+            }
+
             $sets = [$name => $field->getRules()];
 
             if ($field->isMultiple()) {
@@ -838,6 +887,9 @@ class Form implements Stringable
     /**
      * Clean data for every submittable field, ready to insert or update.
      *
+     * File fields are never included: get uploads with getFile() and
+     * getFiles().
+     *
      * Only defined fields are returned, so extra request keys can never reach
      * the database. Strings are trimmed and empty strings become null
      * according to the config, and unticked checkboxes get the configured
@@ -864,7 +916,7 @@ class Form implements Stringable
         $data      = [];
 
         foreach ($this->getSubmittableFields() as $name => $field) {
-            if (in_array($name, $except, true)) {
+            if (in_array($name, $except, true) || $field instanceof FileFieldInterface) {
                 continue;
             }
 
@@ -874,6 +926,47 @@ class Form implements Stringable
         }
 
         return $data;
+    }
+
+    // -------------------------------------------------------------------------
+    // Uploads
+    // -------------------------------------------------------------------------
+
+    /**
+     * The uploaded file of a file field, or null when none was uploaded or
+     * it is not a valid upload. For a multiple field, the first file.
+     *
+     * Files are read from the current request, as CodeIgniter's file rules
+     * do. Store them after validate() passes:
+     *
+     *     $path = $form->getFile('photo')?->store('photos');
+     */
+    public function getFile(string $name): ?UploadedFile
+    {
+        return $this->getFiles($name)[0] ?? null;
+    }
+
+    /**
+     * All valid uploaded files of a file field, in upload order. Files that
+     * failed to upload or were already moved are left out.
+     *
+     * @return list<UploadedFile>
+     */
+    public function getFiles(string $name): array
+    {
+        return array_values(array_filter(
+            $this->uploadsFor($name),
+            static fn (UploadedFile $file): bool => $file->isValid() && ! $file->hasMoved(),
+        ));
+    }
+
+    /**
+     * Whether the request contains a file for this field, valid or not.
+     * An empty file input (nothing chosen) does not count.
+     */
+    public function hasUploadedFile(string $name): bool
+    {
+        return $this->uploadsFor($name) !== [];
     }
 
     /**
@@ -1217,6 +1310,66 @@ class Form implements Stringable
         }
 
         return $data;
+    }
+
+    /**
+     * Files the request holds for a file field, excluding empty inputs.
+     *
+     * @return list<UploadedFile>
+     */
+    private function uploadsFor(string $name): array
+    {
+        if (! $this->getField($name) instanceof FileFieldInterface) {
+            throw FormException::forNotAFileField($this->name, $name);
+        }
+
+        $request = service('request');
+
+        if (! $request instanceof IncomingRequest) {
+            return [];
+        }
+
+        $files = $request->getFileMultiple($name) ?? [$request->getFile($name)];
+
+        return array_values(array_filter(
+            $files,
+            static fn (?UploadedFile $file): bool => $file instanceof UploadedFile && $file->getError() !== UPLOAD_ERR_NO_FILE,
+        ));
+    }
+
+    /**
+     * Rejects submitted values that are not among a choice field's options.
+     * Runs after the rules; a field that already has an error is skipped so
+     * each field reports one error at a time. Empty values are left to
+     * "required".
+     *
+     * @param array<string, mixed> $values Shape-normalised validation data
+     */
+    private function checkOptions(array $values): void
+    {
+        foreach ($this->getSubmittableFields() as $name => $field) {
+            if (isset($this->errors[$name]) || ! $this->usesStrictOptions($field) || ! array_key_exists($name, $values)) {
+                continue;
+            }
+
+            /** @var ChoiceFieldInterface $field */
+            $allowed = $field->getAllowedValues();
+            $items   = is_array($values[$name]) ? $values[$name] : [$values[$name]];
+
+            foreach ($items as $item) {
+                if ($item === null || $item === '') {
+                    continue;
+                }
+
+                if (! is_scalar($item) || ! in_array((string) $item, $allowed, true)) {
+                    $message = $field->getMessages()['options'] ?? $this->config->strictOptionsMessage;
+
+                    $this->setError($name, str_replace('{field}', $field->getLabel(), $message));
+
+                    break;
+                }
+            }
+        }
     }
 
     /**
