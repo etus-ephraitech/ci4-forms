@@ -123,6 +123,17 @@ trait HasOptions
         return in_array((string) $value, $this->getOptionValues(), true);
     }
 
+    /**
+     * Id of one option's input, used to link its label (radio and checkbox
+     * groups).
+     */
+    public function getOptionId(string $value, string $prefix = ''): string
+    {
+        $suffix = (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', $value);
+
+        return $this->getId($prefix) . '_' . ($suffix === '' ? 'empty' : $suffix);
+    }
+
     protected function allowsOptionGroups(): bool
     {
         return false;

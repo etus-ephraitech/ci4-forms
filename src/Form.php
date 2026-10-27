@@ -10,6 +10,7 @@ use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Contracts\FieldInterface;
 use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Fields\Checkbox;
+use Ephraitech\Forms\Fields\Checkboxes;
 use Ephraitech\Forms\Fields\Date;
 use Ephraitech\Forms\Fields\Email;
 use Ephraitech\Forms\Fields\Field;
@@ -23,6 +24,7 @@ use Ephraitech\Forms\Fields\Tel;
 use Ephraitech\Forms\Fields\Text;
 use Ephraitech\Forms\Fields\Textarea;
 use Ephraitech\Forms\Fields\Url;
+use Ephraitech\Forms\Support\RuleParser;
 use Stringable;
 use Traversable;
 
@@ -449,6 +451,22 @@ class Form implements Stringable
         return $this->add(new Checkbox($name, $label));
     }
 
+    /**
+     * A group of checkboxes; the value is a list of the ticked options.
+     *
+     * @param array<array-key, mixed>|\Closure(): array<array-key, mixed>|null $options
+     */
+    public function checkboxes(string $name, ?string $label = null, array|\Closure|null $options = null): Checkboxes
+    {
+        $field = new Checkboxes($name, $label);
+
+        if ($options !== null) {
+            $field->options($options);
+        }
+
+        return $this->add($field);
+    }
+
     public function submit(string $label = 'Submit', string $name = 'submit'): Submit
     {
         return $this->add(new Submit($label, $name));
@@ -750,8 +768,12 @@ class Form implements Stringable
             $validation->setRules($rules);
 
             if (! $validation->run($this->validationData($this->submitted ?? []))) {
-                foreach ($validation->getErrors() as $field => $message) {
-                    $this->errors[(string) $field] = (string) $message;
+                foreach ($validation->getErrors() as $key => $message) {
+                    // Errors for list items arrive as "tags.1" or "tags.*";
+                    // the first one is reported on the field itself.
+                    $field = explode('.', (string) $key, 2)[0];
+
+                    $this->errors[$field] ??= (string) $message;
                 }
             }
         }
@@ -770,8 +792,11 @@ class Form implements Stringable
 
     /**
      * Rules for every submittable field that has rules, in the format
-     * CodeIgniter's Validation::setRules() expects. Also usable directly
-     * with a controller's $this->validate().
+     * CodeIgniter's Validation::setRules() expects. Item rules of
+     * multi-value fields are keyed "name.*" and start with permit_empty,
+     * because CodeIgniter otherwise runs them against an empty list as if it
+     * held one empty item; "at least one" belongs in rules('required').
+     * Also usable directly with a controller's $this->validate().
      *
      * @return array<string, array{label: string, rules: list<callable|string>, errors?: array<string, string>}>
      */
@@ -780,19 +805,31 @@ class Form implements Stringable
         $rules = [];
 
         foreach ($this->getSubmittableFields() as $name => $field) {
-            $fieldRules = $field->getRules();
+            $sets = [$name => $field->getRules()];
 
-            if ($fieldRules === []) {
-                continue;
+            if ($field->isMultiple()) {
+                $each = $field->getEachRules();
+
+                if ($each !== [] && ! RuleParser::has($each, 'permit_empty')) {
+                    array_unshift($each, 'permit_empty');
+                }
+
+                $sets[$name . '.*'] = $each;
             }
 
-            $rule = ['label' => $field->getLabel(), 'rules' => $fieldRules];
+            foreach ($sets as $key => $fieldRules) {
+                if ($fieldRules === []) {
+                    continue;
+                }
 
-            if ($field->getMessages() !== []) {
-                $rule['errors'] = $field->getMessages();
+                $rule = ['label' => $field->getLabel(), 'rules' => $fieldRules];
+
+                if ($field->getMessages() !== []) {
+                    $rule['errors'] = $field->getMessages();
+                }
+
+                $rules[$key] = $rule;
             }
-
-            $rules[$name] = $rule;
         }
 
         return $rules;
@@ -1161,6 +1198,9 @@ class Form implements Stringable
      * "permit_empty" see exactly what the user left blank. Missing keys stay
      * missing, so an unticked required checkbox fails as it should.
      *
+     * Values are also forced into the right shape: multi-value fields always
+     * get a list, single-value fields never get an array.
+     *
      * @param array<string, mixed> $data
      *
      * @return array<string, mixed>
@@ -1202,9 +1242,12 @@ class Form implements Stringable
     {
         $filtered = [];
 
-        foreach ($errors as $field => $message) {
-            if (isset($this->fields[(string) $field]) && is_scalar($message)) {
-                $filtered[(string) $field] = (string) $message;
+        foreach ($errors as $key => $message) {
+            // Item errors of list fields are keyed "tags.1" or "tags.*".
+            $field = explode('.', (string) $key, 2)[0];
+
+            if (isset($this->fields[$field]) && is_scalar($message)) {
+                $filtered[$field] ??= (string) $message;
             }
         }
 

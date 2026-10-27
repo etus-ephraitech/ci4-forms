@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Multi-value fields: `select()->multiple()` (with `size()`) and a new `checkboxes()` group
+  field. Both submit as `name[]` and `validated()` returns a list, empty when nothing is
+  chosen.
+- `eachRules()` for rules checked against every item of a multi-value field, using
+  CodeIgniter's `name.*` wildcard. `permit_empty` is added automatically so an empty list
+  passes; use `rules('required')` to require at least one item.
+- New `field_checkboxes` view; views receive `$inputName`, `$values` and `$multiple`.
+
+### Changed
+
+- `FieldInterface` has two new methods, `getEachRules()` and `isMultiple()`. Custom fields
+  extending `Fields\Field` get both automatically; classes implementing the interface
+  directly must add them.
+- `getOptionId()` moved from `Radio` into the shared `HasOptions` trait.
+- The `field_select` view uses `$inputName` and `$values`. Re-publish the views
+  (`php spark forms:publish --force`) or apply the same change if you customised it.
+
+### Fixed
+
+- An array posted to a single-value field (for example `nickname[]=x`) could pass validation
+  on fields without rules and reach `validated()` as an array. Single-value fields now treat
+  a posted array as no value, and an unticked checkbox's array counts as unticked.
+
 ## [0.1.0] - 2026-10-27
 
 First release. Requires PHP 8.2+ and CodeIgniter 4.7+ (every 4.6 release has published

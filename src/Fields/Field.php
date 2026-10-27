@@ -51,6 +51,11 @@ abstract class Field implements FieldInterface
     protected array $rules = [];
 
     /**
+     * @var list<callable|string>
+     */
+    protected array $eachRules = [];
+
+    /**
      * @var array<string, string>
      */
     protected array $messages = [];
@@ -148,6 +153,26 @@ abstract class Field implements FieldInterface
         }
 
         $this->rules = $parsed;
+
+        return $this;
+    }
+
+    /**
+     * Sets rules checked against every item of a multi-value field, such as
+     * a multi-select or checkbox group. rules() still applies to the list as
+     * a whole (for example "required" means at least one item).
+     *
+     * @param array<array-key, mixed>|string $rules
+     */
+    public function eachRules(array|string $rules): static
+    {
+        $parsed = RuleParser::split($rules);
+
+        if ($parsed === null) {
+            throw FormException::forInvalidRule($this->name);
+        }
+
+        $this->eachRules = $parsed;
 
         return $this;
     }
@@ -318,6 +343,16 @@ abstract class Field implements FieldInterface
         return $this->rules;
     }
 
+    public function getEachRules(): array
+    {
+        return $this->eachRules;
+    }
+
+    public function isMultiple(): bool
+    {
+        return false;
+    }
+
     public function getMessages(): array
     {
         return $this->messages;
@@ -390,10 +425,40 @@ abstract class Field implements FieldInterface
         return array_merge($attributes, $this->extraRuleAttributes());
     }
 
+    /**
+     * Multi-value fields always get a list: a single submitted value is
+     * wrapped, nested arrays and empty items are dropped. Single-value fields
+     * never get an array: a submitted array (name[] sent to a plain field) is
+     * treated as no value, so it can never reach the database.
+     */
     public function normaliseValue(mixed $value, Forms $config): mixed
     {
+        if ($this->isMultiple()) {
+            $items = match (true) {
+                is_array($value)               => $value,
+                $value === null, $value === '' => [],
+                default                        => [$value],
+            };
+
+            $list = [];
+
+            foreach ($items as $item) {
+                if (! is_scalar($item)) {
+                    continue;
+                }
+
+                $item = $this->normaliseScalar($item, $config);
+
+                if ($item !== null && $item !== '') {
+                    $list[] = $item;
+                }
+            }
+
+            return $list;
+        }
+
         if (is_array($value)) {
-            return array_map(fn (mixed $item): mixed => $this->normaliseScalar($item, $config), $value);
+            return null;
         }
 
         return $this->normaliseScalar($value, $config);
@@ -401,7 +466,7 @@ abstract class Field implements FieldInterface
 
     public function valueWhenMissing(Forms $config): mixed
     {
-        return null;
+        return $this->isMultiple() ? [] : null;
     }
 
     public function toArray(): array
@@ -411,6 +476,8 @@ abstract class Field implements FieldInterface
             'name'        => $this->name,
             'label'       => $this->label,
             'rules'       => array_values(array_filter($this->rules, 'is_string')),
+            'each_rules'  => array_values(array_filter($this->eachRules, 'is_string')),
+            'multiple'    => $this->isMultiple(),
             'messages'    => $this->messages,
             'attributes'  => array_map(
                 static fn (mixed $value): mixed => $value instanceof Stringable ? (string) $value : $value,

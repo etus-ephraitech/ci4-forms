@@ -65,6 +65,18 @@ class Checkbox extends Field
         return (string) $value === $this->checkedValue;
     }
 
+    /**
+     * A tampered array value counts as unticked.
+     */
+    public function normaliseValue(mixed $value, Forms $config): mixed
+    {
+        if (is_array($value)) {
+            return $this->valueWhenMissing($config);
+        }
+
+        return parent::normaliseValue($value, $config);
+    }
+
     public function valueWhenMissing(Forms $config): mixed
     {
         return $config->checkboxUncheckedValue;

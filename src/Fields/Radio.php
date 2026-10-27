@@ -34,16 +34,6 @@ class Radio extends Field
         return $this->inline;
     }
 
-    /**
-     * Id of one option's input, used to link its label.
-     */
-    public function getOptionId(string $value, string $prefix = ''): string
-    {
-        $suffix = (string) preg_replace('/[^A-Za-z0-9_\-]/', '_', $value);
-
-        return $this->getId($prefix) . '_' . ($suffix === '' ? 'empty' : $suffix);
-    }
-
     public function toArray(): array
     {
         return array_merge(parent::toArray(), [

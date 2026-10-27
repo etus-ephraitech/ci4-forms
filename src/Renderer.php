@@ -7,6 +7,7 @@ namespace Ephraitech\Forms;
 use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Contracts\FieldInterface;
 use Ephraitech\Forms\Fields\Checkbox;
+use Ephraitech\Forms\Fields\Checkboxes;
 use Ephraitech\Forms\Fields\InputField;
 use Ephraitech\Forms\Fields\Radio;
 use Ephraitech\Forms\Fields\Select;
@@ -20,7 +21,12 @@ use Stringable;
  *
  * - $field, $form           The field and form objects
  * - $name, $id, $label      Field name, element id and label text (unescaped)
- * - $value                  Resolved value as a string (unescaped)
+ * - $inputName              Name for the HTML name attribute: "tags[]" for
+ *                           multi-value fields, otherwise the same as $name
+ * - $value                  Resolved value as a string (unescaped); '' for lists
+ * - $values                 Resolved value as a list of strings: every selected
+ *                           or ticked option for multi-value fields, [$value] otherwise
+ * - $multiple               Whether the field holds a list
  * - $requiredMarker         Raw HTML marker for required fields, or ''
  * - $error, $errorId        Error message (unescaped) or null, and its id
  * - $help, $helpId          Help text (unescaped) or null, and its id
@@ -40,8 +46,9 @@ class Renderer
     private const CONTROL_CLASS = [
         'textarea' => 'textarea',
         'select'   => 'select',
-        'checkbox' => 'check_input',
-        'radio'    => 'check_input',
+        'checkbox'   => 'check_input',
+        'checkboxes' => 'check_input',
+        'radio'      => 'check_input',
         'submit'   => 'submit',
         'hidden'   => '',
     ];
@@ -211,11 +218,15 @@ class Renderer
             $help !== null && ! $bare ? $helpId : null,
         ]);
 
+        $multiple = $field->isMultiple();
+        $value    = $form->getValue($field->getName());
+
         $attributes = array_merge(
             $field->ruleAttributes($this->config),
             $field->getAttributes(),
             [
-                'placeholder'      => in_array($type, ['select', 'radio', 'checkbox', 'hidden', 'submit'], true) ? null : $field->getPlaceholder(),
+                'multiple'         => $type === 'select' && $multiple,
+                'placeholder'      => in_array($type, ['select', 'radio', 'checkbox', 'checkboxes', 'hidden', 'submit'], true) ? null : $field->getPlaceholder(),
                 'disabled'         => $field->isDisabled(),
                 'aria-invalid'     => $error !== null ? 'true' : null,
                 'aria-describedby' => $describedBy === [] ? null : implode(' ', $describedBy),
@@ -230,7 +241,10 @@ class Renderer
             'name'           => $field->getName(),
             'id'             => $id,
             'label'          => $field->getLabel(),
-            'value'          => self::stringify($form->getValue($field->getName())),
+            'inputName'      => $multiple ? $field->getName() . '[]' : $field->getName(),
+            'value'          => $multiple ? '' : self::stringify($value),
+            'values'         => $multiple ? self::stringList($value) : [self::stringify($value)],
+            'multiple'       => $multiple,
             'requiredMarker' => $field->isRequired() ? $this->config->activeTheme()['required_marker'] : '',
             'error'          => $error,
             'errorId'        => $errorId,
@@ -240,7 +254,7 @@ class Renderer
             'bare'           => $bare,
             'e'              => self::escape(...),
             'class'          => fn (string $key): string => $this->classAttribute($classes[$key] ?? ''),
-            'placeholder'    => $field->getPlaceholder(),
+            'placeholder'    => $multiple ? null : $field->getPlaceholder(),
             'inputType'      => $field instanceof InputField ? $field->getInputType() : 'text',
             'options'        => [],
             'optionIds'      => [],
@@ -249,11 +263,11 @@ class Renderer
             'inline'         => false,
         ];
 
-        if ($field instanceof Select || $field instanceof Radio) {
+        if ($field instanceof Select || $field instanceof Radio || $field instanceof Checkboxes) {
             $data['options'] = $field->getOptions();
         }
 
-        if ($field instanceof Radio) {
+        if ($field instanceof Radio || $field instanceof Checkboxes) {
             $data['inline'] = $field->isInline();
 
             foreach (array_keys($data['options']) as $value) {
@@ -279,11 +293,12 @@ class Renderer
     {
         $type       = $field->getType();
         $controlKey = self::CONTROL_CLASS[$type] ?? 'input';
-        $isCheck    = in_array($type, ['checkbox', 'radio'], true);
-        $inline     = ($field instanceof Checkbox || $field instanceof Radio) && $field->isInline();
+        $isCheck    = in_array($type, ['checkbox', 'checkboxes', 'radio'], true);
+        $isGroup    = in_array($type, ['radio', 'checkboxes'], true);
+        $inline     = ($field instanceof Checkbox || $field instanceof Checkboxes || $field instanceof Radio) && $field->isInline();
 
         return [
-            'group'       => $this->config->classFor($type === 'radio' ? 'fieldset' : 'group'),
+            'group'       => $this->config->classFor($isGroup ? 'fieldset' : 'group'),
             'label'       => $this->config->classFor('label'),
             'legend'      => $this->config->classFor('legend'),
             'control'     => $this->joinClasses(
@@ -294,7 +309,7 @@ class Renderer
                 ? $this->joinClasses($this->config->classFor('check_wrapper'), $inline ? $this->config->classFor('check_inline') : '')
                 : '',
             'check_label' => $this->config->classFor('check_label'),
-            'error'       => $this->config->classFor($type === 'radio' ? 'error_block' : 'error'),
+            'error'       => $this->config->classFor($isGroup ? 'error_block' : 'error'),
             'help'        => $this->config->classFor('help'),
         ];
     }
@@ -342,6 +357,26 @@ class Renderer
         }
 
         return implode(' ', $unique);
+    }
+
+    /**
+     * A resolved value as a list of strings, for multi-value fields. Filled
+     * data may hold a list or a single value.
+     *
+     * @return list<string>
+     */
+    private static function stringList(mixed $value): array
+    {
+        $items = is_array($value) ? $value : ($value === null || $value === '' ? [] : [$value]);
+        $list  = [];
+
+        foreach ($items as $item) {
+            if (is_scalar($item) || $item instanceof Stringable) {
+                $list[] = self::stringify($item);
+            }
+        }
+
+        return $list;
     }
 
     private static function stringify(mixed $value): string

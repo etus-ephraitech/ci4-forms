@@ -40,6 +40,20 @@ interface FieldInterface
     public function getRules(): array;
 
     /**
+     * Rules applied to every item of a multi-value field (validated with
+     * CodeIgniter's "name.*" wildcard). Empty for single-value fields.
+     *
+     * @return list<callable|string>
+     */
+    public function getEachRules(): array;
+
+    /**
+     * Whether the field's value is a list (multi-select, checkbox group),
+     * submitted as name[] and returned by validated() as an array.
+     */
+    public function isMultiple(): bool;
+
+    /**
      * Custom validation messages keyed by rule name.
      *
      * @return array<string, string>
@@ -105,7 +119,8 @@ interface FieldInterface
 
     /**
      * Cleans a submitted value for validated(): trimming and empty-to-null
-     * conversion according to the config.
+     * conversion according to the config. Multi-value fields always return a
+     * list; single-value fields never return an array.
      */
     public function normaliseValue(mixed $value, Forms $config): mixed;
 
