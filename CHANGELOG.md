@@ -43,6 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Form::getLayout()`, `Layout\Row`, `Layout\Fieldset`; new `layout_row` and
   `layout_fieldset` views and theme classes `row`, `column` (`{width}` placeholder),
   `column_auto`, `section`, `section_legend`, `section_description`.
+- New inputs: `time()`, `datetimeLocal()`, `color()` (values lower-cased) and `search()`.
+  `date()`, `time()` and `datetimeLocal()` share `min()`, `max()` and `step()` through the new
+  `Fields\DateTimeInputField` base class.
+- Custom field type registry: `$fieldTypes = ['money' => MoneyField::class]` in config makes
+  `$this->money('price')` a builder method, including inline chaining and inside groups.
+  Registrations are checked: camelCase names, no clashes with built-in types or `Form`
+  methods, and classes must implement `FieldInterface`.
+- `Form::addField($type, $name, $label)` creates any built-in or registered field by type key;
+  `Form::hasFieldType()`; `Support\FieldTypes::BUILT_IN` lists the built-in keys.
+- Custom fields can render their own view: a `VIEW` containing a path (`fields/money` or
+  `Vendor\Package\Views\money`) is loaded as given instead of from the theme. Field views can
+  ask `$class()` for any theme class key.
 
 ### Changed
 

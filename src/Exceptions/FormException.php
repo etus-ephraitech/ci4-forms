@@ -135,6 +135,24 @@ class FormException extends RuntimeException
         return new static(sprintf('This %s does not belong to a form.', $type));
     }
 
+    public static function forInvalidFieldType(string $type, string $reason): static
+    {
+        return new static(sprintf('Field type "%s" cannot be registered: %s', $type, $reason));
+    }
+
+    public static function forInvalidBuilderArguments(string $type): static
+    {
+        return new static(sprintf('%s() expects a field name and an optional label.', $type));
+    }
+
+    public static function forUnknownFieldType(string $type): static
+    {
+        return new static(sprintf(
+            'Unknown field type "%s". Use a built-in type or register it in the $fieldTypes setting of app/Config/Forms.php.',
+            $type,
+        ));
+    }
+
     public static function forUndefinedMethod(string $class, string $method): static
     {
         return new static(sprintf('Call to undefined method %s::%s().', $class, $method));

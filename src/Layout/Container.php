@@ -47,7 +47,7 @@ abstract class Container
      */
     public function __call(string $method, array $arguments): mixed
     {
-        if ($this->parent !== null && method_exists($this->parent, $method)) {
+        if ($this->parent !== null && is_callable([$this->parent, $method])) {
             return $this->parent->{$method}(...$arguments);
         }
 

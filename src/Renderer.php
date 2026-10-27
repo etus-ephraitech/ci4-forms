@@ -37,7 +37,9 @@ use Stringable;
  * - $attributes             Extra attributes, already escaped, with a leading space
  * - $bare                   True when only the control is wanted (no label/wrapper)
  * - $e                      Escaper: $e($text) for text and double-quoted attributes
- * - $class                  $class('group') returns ' class="..."' or ''
+ * - $class                  $class('group') returns ' class="..."' or ''; keys
+ *                           not specific to the field (such as 'error_block')
+ *                           come straight from the theme's classes
  *
  * plus, by field type: $inputType, $placeholder, $options, $optionIds,
  * $checked, $checkedValue, $inline, and for file fields $reselect (the
@@ -361,7 +363,7 @@ class Renderer
             'attributes'     => self::attributes($attributes),
             'bare'           => $bare,
             'e'              => self::escape(...),
-            'class'          => fn (string $key): string => $this->classAttribute($classes[$key] ?? ''),
+            'class'          => fn (string $key): string => $this->classAttribute($classes[$key] ?? $this->config->classFor($key)),
             'placeholder'    => $multiple ? null : $field->getPlaceholder(),
             'inputType'      => $field instanceof InputField ? $field->getInputType() : 'text',
             'options'        => [],
@@ -452,7 +454,7 @@ class Renderer
     /**
      * The view to load for a template: the active theme's own file, or the
      * package's bundled copy of that theme when the theme's views folder
-     * lacks it.
+     * lacks it. Templates given as a path are used as they are.
      *
      * This keeps published (customised) views working after an upgrade that
      * adds templates for new field types: the new templates come from the
@@ -461,6 +463,12 @@ class Renderer
      */
     protected function resolveView(string $template): string
     {
+        // A view name with a path ("fields/money" or "Vendor\Package\Views\money")
+        // belongs to a custom field and is used as given.
+        if (strpbrk($template, '/\\') !== false) {
+            return $template;
+        }
+
         $key = $this->config->theme . '|' . $template;
 
         if (isset($this->resolvedViews[$key])) {

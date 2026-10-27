@@ -174,6 +174,26 @@ class Forms extends BaseConfig
     public ?string $fileReselectMessage = 'Please choose the file again.';
 
     /**
+     * Custom field types, as name => class. Each class implements
+     * Ephraitech\Forms\Contracts\FieldInterface (usually by extending
+     * Ephraitech\Forms\Fields\Field or InputField) and takes the
+     * constructor arguments (string $name, ?string $label = null).
+     *
+     * A registered name becomes a form builder method and a type key:
+     *
+     *     public array $fieldTypes = ['money' => \App\Forms\Fields\MoneyField::class];
+     *
+     *     $this->money('price', 'Price');          // in a form class
+     *     $form->addField('money', 'price');       // by type key
+     *
+     * Names are camelCase and must not clash with built-in types or Form
+     * methods.
+     *
+     * @var array<string, class-string>
+     */
+    public array $fieldTypes = [];
+
+    /**
      * Value validated() returns for a checkbox that was not ticked. Browsers
      * send nothing for unticked checkboxes, so without this the column would
      * simply be missing from the data.

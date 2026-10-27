@@ -14,7 +14,9 @@ use Ephraitech\Forms\Contracts\FileFieldInterface;
 use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Fields\Checkbox;
 use Ephraitech\Forms\Fields\Checkboxes;
+use Ephraitech\Forms\Fields\Color;
 use Ephraitech\Forms\Fields\Date;
+use Ephraitech\Forms\Fields\DatetimeLocal;
 use Ephraitech\Forms\Fields\Email;
 use Ephraitech\Forms\Fields\Field;
 use Ephraitech\Forms\Fields\File;
@@ -22,15 +24,18 @@ use Ephraitech\Forms\Fields\Hidden;
 use Ephraitech\Forms\Fields\Number;
 use Ephraitech\Forms\Fields\Password;
 use Ephraitech\Forms\Fields\Radio;
+use Ephraitech\Forms\Fields\Search;
 use Ephraitech\Forms\Fields\Select;
 use Ephraitech\Forms\Fields\Submit;
 use Ephraitech\Forms\Fields\Tel;
 use Ephraitech\Forms\Fields\Text;
 use Ephraitech\Forms\Fields\Textarea;
+use Ephraitech\Forms\Fields\Time;
 use Ephraitech\Forms\Fields\Url;
 use Ephraitech\Forms\Layout\Container;
 use Ephraitech\Forms\Layout\Fieldset;
 use Ephraitech\Forms\Layout\Row;
+use Ephraitech\Forms\Support\FieldTypes;
 use Ephraitech\Forms\Support\RuleParser;
 use Stringable;
 use Traversable;
@@ -193,6 +198,28 @@ class Form implements Stringable
     public function __toString(): string
     {
         return $this->render();
+    }
+
+    /**
+     * Builder methods for field types registered in the $fieldTypes config
+     * setting: with 'money' registered, $form->money('price', 'Price').
+     *
+     * @param list<mixed> $arguments
+     */
+    public function __call(string $method, array $arguments): mixed
+    {
+        if (array_key_exists($method, FieldTypes::registered($this->config))) {
+            $name  = $arguments[0] ?? null;
+            $label = $arguments[1] ?? null;
+
+            if (! is_string($name) || ($label !== null && ! is_string($label))) {
+                throw FormException::forInvalidBuilderArguments($method);
+            }
+
+            return $this->addField($method, $name, $label);
+        }
+
+        throw FormException::forUndefinedMethod(static::class, $method . ' (no built-in method or registered field type)');
     }
 
     /**
@@ -443,6 +470,26 @@ class Form implements Stringable
         return $this->add(new Date($name, $label));
     }
 
+    public function time(string $name, ?string $label = null): Time
+    {
+        return $this->add(new Time($name, $label));
+    }
+
+    public function datetimeLocal(string $name, ?string $label = null): DatetimeLocal
+    {
+        return $this->add(new DatetimeLocal($name, $label));
+    }
+
+    public function color(string $name, ?string $label = null): Color
+    {
+        return $this->add(new Color($name, $label));
+    }
+
+    public function search(string $name, ?string $label = null): Search
+    {
+        return $this->add(new Search($name, $label));
+    }
+
     public function hidden(string $name, mixed $default = null): Hidden
     {
         return $this->add((new Hidden($name))->default($default));
@@ -513,6 +560,34 @@ class Form implements Stringable
     public function submit(string $label = 'Submit', string $name = 'submit'): Submit
     {
         return $this->add(new Submit($label, $name));
+    }
+
+    /**
+     * Creates and adds a field by type key: a built-in type ('text',
+     * 'datetime_local', 'checkboxes'...) or one registered in $fieldTypes.
+     * For 'submit', the label is the button text.
+     */
+    public function addField(string $type, string $name, ?string $label = null): FieldInterface
+    {
+        $class = FieldTypes::resolve($type, $this->config);
+
+        if ($class === null) {
+            throw FormException::forUnknownFieldType($type);
+        }
+
+        $field = $class === Submit::class
+            ? new Submit($label ?? 'Submit', $name)
+            : new $class($name, $label);
+
+        return $this->add($field);
+    }
+
+    /**
+     * Whether a type key is built in or registered.
+     */
+    public function hasFieldType(string $type): bool
+    {
+        return FieldTypes::resolve($type, $this->config) !== null;
     }
 
     /**
