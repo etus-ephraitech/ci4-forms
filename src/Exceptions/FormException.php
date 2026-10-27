@@ -110,6 +110,11 @@ class FormException extends RuntimeException
         ));
     }
 
+    public static function forPublishFailed(string $path, string $reason): static
+    {
+        return new static(sprintf('Could not publish to "%s": %s', $path, $reason));
+    }
+
     public static function forUndefinedMethod(string $class, string $method): static
     {
         return new static(sprintf('Call to undefined method %s::%s().', $class, $method));

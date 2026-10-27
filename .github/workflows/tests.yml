@@ -1,0 +1,59 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phpunit:
+    name: PHP ${{ matrix.php }} / CodeIgniter ${{ matrix.codeigniter }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+        codeigniter: ['4.6', '4.7']
+        exclude:
+          - php: '8.5'
+            codeigniter: '4.6'
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: intl, mbstring, sqlite3
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ matrix.php }}-${{ matrix.codeigniter }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-${{ matrix.codeigniter }}-
+
+      - name: Pin CodeIgniter ${{ matrix.codeigniter }}
+        run: composer require --dev --no-update "codeigniter4/framework:~${{ matrix.codeigniter }}.0"
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Run tests
+        run: vendor/bin/phpunit

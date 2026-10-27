@@ -28,8 +28,8 @@ final class EnvironmentTest extends CIUnitTestCase
     public function testCodeIgniterVersionIsSupported(): void
     {
         $this->assertTrue(
-            version_compare(CodeIgniter::CI_VERSION, '4.5.0', '>='),
-            'ephraitech/ci4-forms requires CodeIgniter 4.5 or newer; running ' . CodeIgniter::CI_VERSION,
+            version_compare(CodeIgniter::CI_VERSION, '4.6.0', '>='),
+            'ephraitech/ci4-forms requires CodeIgniter 4.6 or newer; running ' . CodeIgniter::CI_VERSION,
         );
     }
 
