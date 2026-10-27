@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Ephraitech\Forms;
 
+use CodeIgniter\HTTP\IncomingRequest;
+use CodeIgniter\Validation\ValidationInterface;
 use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Contracts\FieldInterface;
 use Ephraitech\Forms\Exceptions\FormException;
@@ -51,8 +53,15 @@ use Traversable;
  * Values are resolved per field in this order: the submitted request data,
  * then session old input (after redirect()->withInput()), then data passed to
  * fill(), then the field's default.
+ *
+ * Validation runs through CodeIgniter's shared Validation service, so both
+ * controller patterns work: re-render the view with the form directly, or
+ * redirect()->back()->withInput() and the errors travel with the old input.
+ *
+ * In views, render the whole form with <?= $form ?>, or build a custom
+ * layout from open(), field(), control(), errorSummary() and close().
  */
-class Form
+class Form implements Stringable
 {
     /**
      * Name of the hidden field that identifies which form a submission came
@@ -118,6 +127,29 @@ class Form
     private bool $oldInputLoaded = false;
 
     /**
+     * Errors from validate() and setError(), keyed by field name.
+     *
+     * @var array<string, string>
+     */
+    protected array $errors = [];
+
+    /**
+     * Whether validate() has run on this instance.
+     */
+    protected bool $hasRunValidation = false;
+
+    private ?ValidationInterface $validation = null;
+
+    private ?Renderer $renderer = null;
+
+    /**
+     * @var array<string, string>|null
+     */
+    private ?array $oldErrors = null;
+
+    private bool $oldErrorsLoaded = false;
+
+    /**
      * @param string|null $name   Form name; derived from the class name when
      *                            omitted (BookingForm becomes "booking").
      * @param Forms|null  $config Config instance; resolved from the app when
@@ -130,6 +162,14 @@ class Form
         $this->method = $this->config->defaultMethod();
 
         $this->define();
+    }
+
+    /**
+     * Renders the whole form, so a view can simply echo it: <?= $form ?>
+     */
+    public function __toString(): string
+    {
+        return $this->render();
     }
 
     /**
@@ -676,6 +716,295 @@ class Form
         return $this->oldInput;
     }
 
+    // -------------------------------------------------------------------------
+    // Validation
+    // -------------------------------------------------------------------------
+
+    /**
+     * Validates submitted data against the fields' rules.
+     *
+     * With no argument the current request is used: POST data for POST, PUT,
+     * PATCH and DELETE forms, query data for GET forms, and the decoded body
+     * for JSON requests. An array can be passed instead, for APIs and tests.
+     *
+     * The data is stored as this form's submission, so a failed form can be
+     * re-rendered with the user's input, and validated() can be called when
+     * validation passes.
+     *
+     * @param array<array-key, mixed>|IncomingRequest|null $input
+     */
+    public function validate(array|IncomingRequest|null $input = null): bool
+    {
+        $data = $this->prepareForValidation($this->extractInput($input));
+
+        $this->setSubmittedData($data);
+        $this->errors           = [];
+        $this->hasRunValidation = true;
+
+        $validation = $this->getValidation();
+        $validation->reset();
+
+        $rules = $this->getValidationRules();
+
+        if ($rules !== []) {
+            $validation->setRules($rules);
+
+            if (! $validation->run($this->validationData($this->submitted ?? []))) {
+                foreach ($validation->getErrors() as $field => $message) {
+                    $this->errors[(string) $field] = (string) $message;
+                }
+            }
+        }
+
+        return $this->errors === [];
+    }
+
+    /**
+     * Whether validate() ran and no errors exist, including errors added
+     * afterwards with setError().
+     */
+    public function isValid(): bool
+    {
+        return $this->hasRunValidation && $this->errors === [];
+    }
+
+    /**
+     * Rules for every submittable field that has rules, in the format
+     * CodeIgniter's Validation::setRules() expects. Also usable directly
+     * with a controller's $this->validate().
+     *
+     * @return array<string, array{label: string, rules: list<callable|string>, errors?: array<string, string>}>
+     */
+    public function getValidationRules(): array
+    {
+        $rules = [];
+
+        foreach ($this->getSubmittableFields() as $name => $field) {
+            $fieldRules = $field->getRules();
+
+            if ($fieldRules === []) {
+                continue;
+            }
+
+            $rule = ['label' => $field->getLabel(), 'rules' => $fieldRules];
+
+            if ($field->getMessages() !== []) {
+                $rule['errors'] = $field->getMessages();
+            }
+
+            $rules[$name] = $rule;
+        }
+
+        return $rules;
+    }
+
+    /**
+     * Clean data for every submittable field, ready to insert or update.
+     *
+     * Only defined fields are returned, so extra request keys can never reach
+     * the database. Strings are trimmed and empty strings become null
+     * according to the config, and unticked checkboxes get the configured
+     * unchecked value. Pass field names to leave out, such as a password
+     * confirmation field:
+     *
+     *     $model->insert($form->validated('password_confirm'));
+     *
+     * @return array<string, mixed>
+     *
+     * @throws FormException When validate() has not run or did not pass.
+     */
+    public function validated(string ...$except): array
+    {
+        if (! $this->hasRunValidation) {
+            throw FormException::forNotValidated($this->name);
+        }
+
+        if ($this->errors !== []) {
+            throw FormException::forFailedValidation($this->name);
+        }
+
+        $submitted = $this->submitted ?? [];
+        $data      = [];
+
+        foreach ($this->getSubmittableFields() as $name => $field) {
+            if (in_array($name, $except, true)) {
+                continue;
+            }
+
+            $data[$name] = array_key_exists($name, $submitted)
+                ? $field->normaliseValue($submitted[$name], $this->config)
+                : $field->valueWhenMissing($this->config);
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error after validation, such as "This time slot is already
+     * booked" from a database check. The form then counts as invalid, and the
+     * error survives redirect()->withInput() like rule errors do.
+     */
+    public function setError(string $field, string $message): static
+    {
+        $this->errors[$field] = $message;
+
+        $this->getValidation()->setError($field, $message);
+
+        return $this;
+    }
+
+    /**
+     * Current errors keyed by field name.
+     *
+     * Before validate() runs on this request, errors carried over by
+     * redirect()->withInput() are included, limited to this form's fields and
+     * only when the old input came from this form.
+     *
+     * @return array<string, string>
+     */
+    public function getErrors(): array
+    {
+        if ($this->hasRunValidation || $this->getOldInput() === null) {
+            return $this->errors;
+        }
+
+        return array_merge($this->getOldErrors(), $this->errors);
+    }
+
+    public function getError(string $field): ?string
+    {
+        return $this->getErrors()[$field] ?? null;
+    }
+
+    public function hasError(string $field): bool
+    {
+        return $this->getError($field) !== null;
+    }
+
+    public function hasErrors(): bool
+    {
+        return $this->getErrors() !== [];
+    }
+
+    /**
+     * Removes all errors, including any carried over from a redirect.
+     */
+    public function clearErrors(): static
+    {
+        $this->errors          = [];
+        $this->oldErrors       = [];
+        $this->oldErrorsLoaded = true;
+
+        return $this;
+    }
+
+    /**
+     * Uses a specific Validation instance instead of the shared service.
+     * redirect()->withInput() only carries errors from the shared service,
+     * so use this mainly in tests.
+     */
+    public function setValidation(ValidationInterface $validation): static
+    {
+        $this->validation = $validation;
+
+        return $this;
+    }
+
+    public function getValidation(): ValidationInterface
+    {
+        return $this->validation ??= service('validation');
+    }
+
+    /**
+     * Replaces the errors carried over by a redirect with explicit data, or
+     * with none when null is passed. Mainly useful in tests.
+     *
+     * @param array<string, string>|null $errors
+     */
+    public function setOldErrors(?array $errors): static
+    {
+        $this->oldErrors       = $errors === null ? null : $this->filterFieldErrors($errors);
+        $this->oldErrorsLoaded = true;
+
+        return $this;
+    }
+
+    // -------------------------------------------------------------------------
+    // Rendering
+    // -------------------------------------------------------------------------
+
+    /**
+     * The whole form: opening tag, optional error summary, every field in
+     * order and the closing tag.
+     */
+    public function render(): string
+    {
+        return $this->getRenderer()->form($this);
+    }
+
+    /**
+     * Opening <form> tag with the hidden form key, the CSRF field (non-GET
+     * forms) and the _method field (PUT, PATCH and DELETE forms).
+     *
+     * @param array<string, bool|float|int|string|Stringable|null> $attributes Extra attributes for this render only
+     */
+    public function open(array $attributes = []): string
+    {
+        return $this->getRenderer()->open($this, $attributes);
+    }
+
+    public function close(): string
+    {
+        return $this->getRenderer()->close($this);
+    }
+
+    /**
+     * One field with its label, error and help text.
+     */
+    public function field(string $name): string
+    {
+        return $this->getRenderer()->field($this, $name);
+    }
+
+    /**
+     * Several fields in order; every field when no names are given.
+     */
+    public function fields(string ...$names): string
+    {
+        return $this->getRenderer()->fields($this, ...$names);
+    }
+
+    /**
+     * Only the field's control (input, select, textarea or button), without
+     * label, wrapper, error or help text. Use getError() to place the error
+     * yourself in a custom layout.
+     */
+    public function control(string $name): string
+    {
+        return $this->getRenderer()->field($this, $name, true);
+    }
+
+    /**
+     * A list of all current errors linking to their fields, or '' when the
+     * form has no errors.
+     */
+    public function errorSummary(): string
+    {
+        return $this->getRenderer()->errorSummary($this);
+    }
+
+    public function setRenderer(Renderer $renderer): static
+    {
+        $this->renderer = $renderer;
+
+        return $this;
+    }
+
+    public function getRenderer(): Renderer
+    {
+        return $this->renderer ??= new Renderer($this->config);
+    }
+
     /**
      * Plain array description of the form and its fields.
      *
@@ -710,6 +1039,20 @@ class Form
      */
     protected function define(): void
     {
+    }
+
+    /**
+     * Override in form classes to adjust submitted data before validation,
+     * for example to strip spaces from a phone number. The returned data is
+     * what gets validated, repopulated and returned by validated().
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    protected function prepareForValidation(array $data): array
+    {
+        return $data;
     }
 
     /**
@@ -768,9 +1111,105 @@ class Form
         return $merged === [] ? null : $this->stringKeys($merged);
     }
 
+    /**
+     * Reads validation errors stored by redirect()->withInput().
+     *
+     * @return array<string, string>|null
+     */
+    protected function loadOldErrors(): ?array
+    {
+        $errors = service('session')->get('_ci_validation_errors');
+
+        return is_array($errors) ? $errors : null;
+    }
+
     // -------------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------------
+
+    /**
+     * @param array<array-key, mixed>|IncomingRequest|null $input
+     *
+     * @return array<string, mixed>
+     */
+    private function extractInput(array|IncomingRequest|null $input): array
+    {
+        if (is_array($input)) {
+            return $this->stringKeys($input);
+        }
+
+        $request = $input ?? service('request');
+
+        if (! $request instanceof IncomingRequest) {
+            return [];
+        }
+
+        if (str_contains(strtolower($request->getHeaderLine('Content-Type')), 'json')) {
+            $json = $request->getJSON(true);
+
+            return is_array($json) ? $this->stringKeys($json) : [];
+        }
+
+        $data = $this->getHtmlMethod() === 'get' ? $request->getGet() : $request->getPost();
+
+        return is_array($data) ? $this->stringKeys($data) : [];
+    }
+
+    /**
+     * Data handed to the validator: strings of known fields are trimmed (per
+     * the config) but empty strings are kept, so "required" and
+     * "permit_empty" see exactly what the user left blank. Missing keys stay
+     * missing, so an unticked required checkbox fails as it should.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    private function validationData(array $data): array
+    {
+        $config                     = clone $this->config;
+        $config->emptyStringsToNull = false;
+
+        foreach ($data as $name => $value) {
+            if (isset($this->fields[$name]) && $this->fields[$name]->isSubmittable()) {
+                $data[$name] = $this->fields[$name]->normaliseValue($value, $config);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getOldErrors(): array
+    {
+        if (! $this->oldErrorsLoaded) {
+            $loaded                = $this->loadOldErrors();
+            $this->oldErrors       = $loaded === null ? null : $this->filterFieldErrors($loaded);
+            $this->oldErrorsLoaded = true;
+        }
+
+        return $this->oldErrors ?? [];
+    }
+
+    /**
+     * @param array<array-key, mixed> $errors
+     *
+     * @return array<string, string>
+     */
+    private function filterFieldErrors(array $errors): array
+    {
+        $filtered = [];
+
+        foreach ($errors as $field => $message) {
+            if (isset($this->fields[(string) $field]) && is_scalar($message)) {
+                $filtered[(string) $field] = (string) $message;
+            }
+        }
+
+        return $filtered;
+    }
 
     private function csrfTokenName(): ?string
     {

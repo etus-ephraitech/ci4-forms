@@ -75,7 +75,7 @@ class Forms extends BaseConfig
                 'check_input'      => 'form-check-input',
                 'check_label'      => 'form-check-label',
                 'fieldset'         => 'mb-3',
-                'legend'           => 'form-label',
+                'legend'           => 'col-form-label pt-0',
                 'invalid'          => 'is-invalid',
                 'error'            => 'invalid-feedback',
                 'error_block'      => 'invalid-feedback d-block',

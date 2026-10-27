@@ -94,6 +94,22 @@ class FormException extends RuntimeException
         return new static(sprintf('Field "%s" does not belong to a form.', $field));
     }
 
+    public static function forNotValidated(string $form): static
+    {
+        return new static(sprintf(
+            'Form "%s": call validate() before validated().',
+            $form,
+        ));
+    }
+
+    public static function forFailedValidation(string $form): static
+    {
+        return new static(sprintf(
+            'Form "%s" did not pass validation; check hasErrors() before calling validated().',
+            $form,
+        ));
+    }
+
     public static function forUndefinedMethod(string $class, string $method): static
     {
         return new static(sprintf('Call to undefined method %s::%s().', $class, $method));

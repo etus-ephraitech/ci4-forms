@@ -30,3 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fill()` from arrays, Entities and objects; value resolution in priority order (submitted,
   old input, filled, default) with correct unticked-checkbox and password handling; old input
   scoped to the form that produced it via a hidden `_form` key.
+- Validation: `validate()` from the current request, an `IncomingRequest` (POST, GET or JSON)
+  or an array, through CodeIgniter's shared Validation service with field labels and custom
+  messages; values trimmed before validation; `prepareForValidation()` hook;
+  `getValidationRules()` export; `isValid()`.
+- `validated()` returning only defined, submittable fields, normalised per config, with
+  unchecked checkbox values and optional excluded fields.
+- Errors: `getErrors()`, `getError()`, `hasError()`, `hasErrors()`, `clearErrors()` and
+  `setError()` for manual errors; errors (including manual ones) survive
+  `redirect()->withInput()` and are scoped to the form that produced them.
+- Rendering: `Renderer` plus Bootstrap 5 theme views for every field type, the whole form and
+  an error summary. `Form` gains `render()`/`__toString()`, `open()` (hidden form key, CSRF,
+  `_method` spoofing, multipart, `novalidate`), `close()`, `field()`, `fields()`, `control()`
+  for custom layouts and `errorSummary()`. Output is escaped like `esc()`, with error and help
+  text linked through `aria-describedby` and `aria-invalid`.
