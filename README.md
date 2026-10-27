@@ -45,6 +45,11 @@ $this->bookingModel->insert($form->validated());
 - [Defining forms](#defining-forms)
 - [Field types](#field-types)
 - [Field options](#field-options)
+- [Multiple values](#multiple-values)
+- [Strict option checking](#strict-option-checking)
+- [File uploads](#file-uploads)
+- [Layout](#layout)
+- [Custom field types](#custom-field-types)
 - [Controllers and validation](#controllers-and-validation)
 - [Filling forms for editing](#filling-forms-for-editing)
 - [Rendering](#rendering)
@@ -52,6 +57,7 @@ $this->bookingModel->insert($form->validated());
 - [Customising the views](#customising-the-views)
 - [Security notes](#security-notes)
 - [Testing](#testing)
+- [Upgrading from 0.1](#upgrading-from-01)
 - [Versioning](#versioning)
 
 ## Requirements
@@ -142,19 +148,26 @@ which CodeIgniter's router understands.
 | `number($name, $label)`                  | `<input type="number">`           | `min`/`max` from rules; `step()`                   |
 | `tel($name, $label)`                     | `<input type="tel">`              |                                                    |
 | `url($name, $label)`                     | `<input type="url">`              | Pair with `valid_url_strict`                       |
-| `date($name, $label)`                    | `<input type="date">`             | `min()`/`max()`; validate with `valid_date[Y-m-d]` |
+| `search($name, $label)`                  | `<input type="search">`           |                                                    |
+| `date($name, $label)`                    | `<input type="date">`             | `min()`/`max()`/`step()`; `valid_date[Y-m-d]`      |
+| `time($name, $label)`                    | `<input type="time">`             | `min()`/`max()`/`step()`; `valid_date[H:i]`        |
+| `datetimeLocal($name, $label)`           | `<input type="datetime-local">`   | `valid_date[Y-m-d\TH:i]`                           |
+| `color($name, $label)`                   | `<input type="color">`            | Value lower-cased, e.g. `#1a73e8`                  |
 | `hidden($name, $default)`                | `<input type="hidden">`           | Always validate hidden values                      |
 | `textarea($name, $label)`                | `<textarea>`                      | `rows()`                                           |
-| `select($name, $label, $options)`        | `<select>`                        | Option groups; placeholder as empty option         |
+| `select($name, $label, $options)`        | `<select>`                        | Option groups; `multiple()`, `size()`              |
 | `radio($name, $label, $options)`         | Radio group in a `<fieldset>`     | `inline()`                                         |
 | `checkbox($name, $label)`                | Single checkbox                   | `checkedValue()`, `inline()`                       |
+| `checkboxes($name, $label, $options)`    | Checkbox group in a `<fieldset>`  | Value is a list; `inline()`                        |
+| `file($name, $label)`                    | `<input type="file">`             | See [File uploads](#file-uploads)                  |
 | `submit($label, $name = 'submit')`       | `<button type="submit">`          | Never validated or returned                        |
 
 The label defaults to the humanised name: `appointment_date` becomes
 "Appointment date".
 
-Custom field classes can be added with `$form->add(new MyField('name'))` as
-long as they implement `Ephraitech\Forms\Contracts\FieldInterface`.
+Any type can also be created by its key, which is handy when building forms
+from data: `$form->addField('datetime_local', 'starts_at', 'Starts at')`.
+Your own field types are covered under [Custom field types](#custom-field-types).
 
 ## Field options
 
@@ -198,9 +211,189 @@ $this->select('style', 'Style', [
 ]);
 ```
 
-Always validate the submitted value against the options, for example with
-`in_list[...]` or `is_not_unique[services.id]`, because users can submit any
-value regardless of what the list shows.
+Users can submit any value regardless of what the list shows, so the package
+rejects values that are not among the options automatically (see
+[Strict option checking](#strict-option-checking)); no `in_list` rule is
+needed.
+
+## Multiple values
+
+A multi-select and a checkbox group hold a list:
+
+```php
+$this->select('languages', 'Languages', ['en' => 'English', 'lg' => 'Luganda', 'sw' => 'Swahili'])
+    ->multiple()
+    ->size(3);
+
+$this->checkboxes('interests', 'Interests', ['suits' => 'Suits', 'shirts' => 'Shirts'])
+    ->rules('required')                     // at least one ticked
+    ->eachRules('max_length[20]')           // every ticked value
+    ->inline();
+```
+
+Both are submitted as `name[]`, and `validated()` returns a list such as
+`['suits', 'shirts']`, or `[]` when nothing is chosen, never `null`.
+`rules()` applies to the list as a whole; `eachRules()` applies to every item,
+and an empty list always passes it.
+
+Values are also forced into the right shape: a single value posted to a list
+field is wrapped in a list, and an array posted to a single-value field is
+treated as empty, so it can never reach your database as an array.
+
+## Strict option checking
+
+Selects, multi-selects, radios, checkbox groups and single checkboxes only
+accept their own options (for a single checkbox, its checked value). A
+tampered value such as `service=free_suit` gets "Please choose a valid option
+for Service." This runs after your rules, ignores empty values (that is what
+`required` is for) and survives `redirect()->withInput()`.
+
+```php
+// Per field: options filled in by JavaScript
+$this->select('city')->strictOptions(false);
+
+// Per field message
+$this->radio('payment', 'Payment', $methods)
+    ->messages(['options' => 'We only accept cash or mobile money.']);
+```
+
+Turn it off globally with `$strictOptions = false`, or change the message
+with `$strictOptionsMessage`, in `app/Config/Forms.php`.
+
+## File uploads
+
+```php
+$this->file('photo', 'Profile photo')
+    ->required()
+    ->maxSize(2048)                          // kilobytes
+    ->image()
+    ->mimes(['image/jpeg', 'image/png']);
+
+$this->file('documents', 'Supporting documents')
+    ->multiple()
+    ->extensions(['pdf', 'docx'])
+    ->mimes(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+```
+
+| Method                  | CodeIgniter rule | Checks                                  |
+| ----------------------- | ---------------- | --------------------------------------- |
+| `required()`            | `uploaded`       | A file was uploaded                     |
+| `maxSize($kb)`          | `max_size`       | File size in kilobytes                  |
+| `extensions([...])`     | `ext_in`         | The file name's extension               |
+| `mimes([...])`          | `mime_in`        | The file's real content type            |
+| `image()`               | `is_image`       | The file is an image                    |
+| `maxDimensions($w, $h)` | `max_dims`       | Image size in pixels                    |
+
+Extensions come from the user's file name and are easy to fake, so combine
+`extensions()` with `mimes()` or `image()`. The helpers also set the input's
+`accept` attribute, so the browser's file picker shows matching files.
+
+An optional file field is only validated when a file is uploaded. A form with
+a file field is sent as multipart automatically.
+
+Uploads are never part of `validated()`. Store them after validation passes:
+
+```php
+if (! $form->validate()) {
+    return view('profile/edit', ['form' => $form]);
+}
+
+$data = $form->validated();
+$data['photo_path'] = $form->getFile('photo')?->store('photos');
+
+foreach ($form->getFiles('documents') as $file) {
+    $file->store('documents');
+}
+```
+
+Browsers cannot refill a file input, so after a failed submission each file
+field without its own error shows "Please choose the file again."
+(`$fileReselectMessage`; set it to `null` to hide it).
+
+## Layout
+
+Rows place fields side by side and fieldsets group them under a title. Both
+are defined in the form class, so `<?= $form ?>` renders the full layout:
+
+```php
+protected function define(): void
+{
+    $this->row(function () {
+        $this->text('first_name')->width(6);
+        $this->text('last_name')->width(6);
+    });
+
+    $this->fieldset('Delivery address', function () {
+        $this->text('street');
+
+        $this->row(function () {
+            $this->text('city')->width(8);
+            $this->text('postcode');            // no width: shares the rest
+        });
+    })->description('Where should we deliver?');
+}
+```
+
+Widths are out of 12 and stack on small screens. Groups nest freely, take
+`addClass()`, and fieldsets can sit side by side in a row with `->width(6)`.
+Hidden fields in a row take no column. Each closure also receives the form,
+which suits arrow functions and inline forms.
+
+Layout only decides where fields appear: validation, `validated()` and
+`field('city')` work exactly the same. `fields()` without arguments renders
+the layout; `fields('a', 'b')` renders the named fields without it. Column
+and section classes are in the theme config (`row`, `column` with a
+`{width}` placeholder, `column_auto`, `section`, `section_legend`,
+`section_description`).
+
+## Custom field types
+
+Write a field class, usually by extending `Ephraitech\Forms\Fields\InputField`
+or `Field`:
+
+```php
+namespace App\Forms\Fields;
+
+use Ephraitech\Forms\Config\Forms;
+use Ephraitech\Forms\Fields\InputField;
+
+class MoneyField extends InputField
+{
+    public const TYPE = 'money';
+
+    public const VIEW = 'forms/fields/money';    // app/Views/forms/fields/money.php
+
+    protected function normaliseScalar(mixed $value, Forms $config): mixed
+    {
+        if (is_string($value)) {
+            $value = str_replace([',', ' '], '', $value);   // "1,250,000" -> "1250000"
+        }
+
+        return parent::normaliseScalar($value, $config);
+    }
+}
+```
+
+Register it in `app/Config/Forms.php`:
+
+```php
+public array $fieldTypes = [
+    'money' => \App\Forms\Fields\MoneyField::class,
+];
+```
+
+It then works like a built-in field, including chaining and layout groups:
+
+```php
+$this->money('budget', 'Budget')->rules('permit_empty|is_natural');
+```
+
+Names are camelCase and must not clash with built-in types or `Form`
+methods; invalid registrations fail with a clear message. A `VIEW` without a
+path (such as `field_input`) comes from the active theme; a `VIEW` with a path
+is loaded as given and receives the same variables as the package's views.
+Fields with a fixed set of values can implement `ChoiceFieldInterface` to get
+strict option checking.
 
 ## Controllers and validation
 
@@ -403,6 +596,10 @@ class Forms extends BaseForms
 | `$trimStrings`            | `true`         | Trim strings before validation and in `validated()`            |
 | `$emptyStringsToNull`     | `true`         | Empty strings become `null` in `validated()`                   |
 | `$checkboxUncheckedValue` | `0`            | Value of an unticked checkbox in `validated()`                 |
+| `$strictOptions`          | `true`         | Reject values outside a choice field's options                 |
+| `$strictOptionsMessage`   | see config     | Message for such values; `{field}` becomes the label           |
+| `$fileReselectMessage`    | see config     | Hint under file fields after a failed submission, or `null`    |
+| `$fieldTypes`             | `[]`           | Custom field types, as name => class                           |
 
 Scalar settings can also be set from `.env`, for example
 `forms.showErrorSummary = true`.
@@ -419,8 +616,11 @@ This creates `app/Views/forms/bootstrap5/` and an `app/Config/Forms.php`
 pointing the theme at it. Edit the views freely. If you already have a config
 file, the command prints the one line to add to it.
 
-Running the command again skips files that exist, so your changes are safe.
-Use `--force` to overwrite them with the package's latest versions.
+Running the command again skips files that exist, so your changes are safe,
+and adds templates that are missing, for example after an upgrade that brings
+new field types. Until then, missing templates are taken from the package
+automatically. Use `--force` to overwrite your copies with the package's
+latest versions.
 
 Views receive prepared variables (`$name`, `$id`, `$label`, `$value`,
 `$error`, `$help`, `$attributes` and more) plus two helpers: `$e($text)` to
@@ -436,8 +636,11 @@ documented at the top of `Ephraitech\Forms\Renderer` and in each view.
 - Disabled fields are never accepted from the request. Read-only and hidden
   fields are submitted by the browser and can be changed by the user, so
   validate them like any other field.
-- Validate select, radio and hidden values against what is allowed
-  (`in_list`, `is_not_unique`), not just against what the page showed.
+- Choice fields reject values outside their options automatically. Hidden
+  fields have no options, so validate them against what is allowed (for
+  example `is_not_unique[bookings.id]`).
+- Uploads are checked by content with `mimes()` and `image()`; never trust the
+  file name's extension alone.
 - Passwords are never written back into the page.
 
 ## Testing
@@ -450,15 +653,33 @@ composer test
 The suite runs against CodeIgniter's real Validation service, request
 objects, session and view renderer.
 
+## Upgrading from 0.1
+
+Most apps need no changes. Check these four points:
+
+1. **Strict option checking is on.** Values outside a field's options are now
+   rejected. If a form relied on accepting them, set
+   `->strictOptions(false)` on that field or `$strictOptions = false` in
+   config. Existing `in_list` rules keep working and can be removed.
+2. **Published views:** if you ran `forms:publish` in 0.1, update your
+   `field_select.php` with the package's new version (it uses `$inputName`
+   and `$values`), otherwise multi-selects post only one value. Then run
+   `php spark forms:publish` to add the new templates; existing files are not
+   touched.
+3. **Custom fields implementing `FieldInterface` directly** must add
+   `getEachRules()`, `isMultiple()` and `getWidth()`. Fields extending
+   `Field` or `InputField` need no changes.
+4. **`fields()` without arguments** now renders the layout. Forms without
+   rows or fieldsets render exactly as before.
+
 ## Versioning
 
 The package follows [Semantic Versioning](https://semver.org). Until 1.0,
 minor releases (0.2, 0.3) may change the public API; each change is listed in
 [CHANGELOG.md](CHANGELOG.md).
 
-Planned for 0.2: file uploads, multi-selects, field groups and rows, and a
-custom field type registry. Planned for 0.3: loading forms from array or JSON
-schemas.
+Planned for 0.3: loading forms from array or JSON schemas, built on
+`addField()` and the field type registry.
 
 ## License
 
