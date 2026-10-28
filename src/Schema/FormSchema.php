@@ -60,6 +60,19 @@ final class FormSchema
     }
 
     /**
+     * What a schema may contain under a policy (restricted by default): the
+     * allowed field types with their keys and value kinds, and the allowed
+     * rules, attributes, option providers, upload types and limits. Plain
+     * data, ready for json_encode(), for visual builders and help pages.
+     *
+     * @return array<string, mixed>
+     */
+    public static function describe(?SchemaPolicy $policy = null, ?Forms $config = null): array
+    {
+        return (new SchemaDescriber($config ?? self::config(), $policy ?? SchemaPolicy::restricted()))->describe();
+    }
+
+    /**
      * Exports a form as a schema array.
      *
      * @return array<string, mixed>

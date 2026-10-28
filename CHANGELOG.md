@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `forms` helper (`helper('forms')`) with `forms_load()`, `forms_check()` and
   `forms_present()`. Functions are prefixed `forms_` so they never clash with CodeIgniter's
   `form` helper.
+- `FormSchema::describe($policy)` describes what a schema may contain under a policy, as
+  JSON-ready data: every allowed field type with its label, accepted keys, the kind of value
+  each key takes and a one-line explanation, which keys are required (`requires`) or cannot be
+  combined (`exclusive`), plus the allowed rules with their parameter kinds, attributes,
+  option providers, upload types, size limits and forbidden names. Groundwork for visual
+  builders and admin help pages; a test loads every described key through the loader under
+  each policy, so the description and the loader cannot disagree.
+- `SchemaLoader::keysFor()` (the loader's own key lists, shared with `describe()`) and
+  `SchemaPolicy::getRules()`, `getAttributes()`, `getForbiddenNames()`, `getLimits()`.
 
 ## [0.3.0] - 2026-10-28
 

@@ -504,6 +504,46 @@ final class SchemaPolicy
         return $this->providers === null || in_array($name, $this->providers, true);
     }
 
+    /**
+     * Allowed rules as name => parameter kind, or null when every rule is
+     * allowed (trusted).
+     *
+     * @return array<string, string>|null
+     */
+    public function getRules(): ?array
+    {
+        return $this->trusted ? null : $this->rules;
+    }
+
+    /**
+     * Allowed attribute names ("aria-*" style prefixes included), or null
+     * when every attribute is allowed (trusted).
+     *
+     * @return list<string>|null
+     */
+    public function getAttributes(): ?array
+    {
+        return $this->trusted ? null : $this->attributes;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getForbiddenNames(): array
+    {
+        return $this->trusted ? [] : $this->forbiddenNames;
+    }
+
+    /**
+     * Size limits, or null when there are none (trusted).
+     *
+     * @return array<string, int>|null
+     */
+    public function getLimits(): ?array
+    {
+        return $this->trusted ? null : array_merge(self::DEFAULT_LIMITS, $this->limits);
+    }
+
     public function allowsAction(): bool
     {
         return $this->trusted || $this->actionAllowed;

@@ -177,6 +177,28 @@ final class SchemaLoader
     }
 
     /**
+     * Every key a field type accepts in a schema. Built-in types use
+     * TYPE_KEYS; registered custom types accept the text-field keys (when
+     * they extend Field) plus the keys their class declares through
+     * SchemaConfigurableInterface. FormSchema::describe() uses the same list.
+     *
+     * @param class-string<FieldInterface> $class
+     *
+     * @return list<string>
+     */
+    public static function keysFor(string $type, string $class): array
+    {
+        if (isset(self::TYPE_KEYS[$type])) {
+            return self::TYPE_KEYS[$type];
+        }
+
+        $extras = is_subclass_of($class, SchemaConfigurableInterface::class) ? array_keys($class::schemaProperties()) : [];
+        $base   = is_subclass_of($class, Field::class) ? self::TEXT_LIKE : ['type', 'name', 'label'];
+
+        return array_values(array_unique([...$base, ...$extras]));
+    }
+
+    /**
      * Decodes a JSON schema.
      *
      * @return array<array-key, mixed>
@@ -511,7 +533,7 @@ final class SchemaLoader
         }
 
         $extras  = is_subclass_of($class, SchemaConfigurableInterface::class) ? $class::schemaProperties() : [];
-        $allowed = self::TYPE_KEYS[$type] ?? [...(is_subclass_of($class, Field::class) ? self::TEXT_LIKE : ['type', 'name', 'label']), ...array_keys($extras)];
+        $allowed = self::keysFor($type, $class);
 
         $this->unknownKeys($node, $allowed, $path, 'a "' . $type . '" field');
 
