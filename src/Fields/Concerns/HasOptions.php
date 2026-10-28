@@ -147,6 +147,35 @@ trait HasOptions
     }
 
     /**
+     * Shows option labels instead of values. A value that is no longer an
+     * option (removed after the data was saved) is shown as it was stored.
+     */
+    public function presentValue(mixed $value, \Ephraitech\Forms\Config\Forms $config): array|string
+    {
+        $labels = [];
+
+        foreach ($this->getOptions() as $optionValue => $label) {
+            if (is_array($label)) {
+                foreach ($label as $groupValue => $groupLabel) {
+                    $labels[(string) $groupValue] = $groupLabel;
+                }
+
+                continue;
+            }
+
+            $labels[(string) $optionValue] = $label;
+        }
+
+        $presented = parent::presentValue($value, $config);
+
+        if (is_array($presented)) {
+            return array_map(static fn (string $item): string => $labels[$item] ?? $item, $presented);
+        }
+
+        return $presented === '' ? '' : ($labels[$presented] ?? $presented);
+    }
+
+    /**
      * Every selectable value; see ChoiceFieldInterface.
      *
      * @return list<string>

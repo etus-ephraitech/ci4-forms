@@ -31,6 +31,14 @@ class Submit extends Field
         return false;
     }
 
+    /**
+     * Never shown when presenting stored data.
+     */
+    public function isPresentable(): bool
+    {
+        return false;
+    }
+
     public function shouldRepopulate(): bool
     {
         return false;

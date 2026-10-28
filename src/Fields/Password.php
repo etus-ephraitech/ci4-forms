@@ -17,6 +17,14 @@ class Password extends InputField
 
     public const INPUT_TYPE = 'password';
 
+    /**
+     * Never shown when presenting stored data.
+     */
+    public function isPresentable(): bool
+    {
+        return false;
+    }
+
     public function shouldRepopulate(): bool
     {
         return false;

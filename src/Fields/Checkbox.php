@@ -93,6 +93,14 @@ class Checkbox extends Field implements ChoiceFieldInterface
         return parent::normaliseValue($value, $config);
     }
 
+    /**
+     * "Yes" or "No" (the config's texts), whatever value was stored.
+     */
+    public function presentValue(mixed $value, Forms $config): array|string
+    {
+        return $this->isChecked($value) ? $config->presentYes : $config->presentNo;
+    }
+
     public function valueWhenMissing(Forms $config): mixed
     {
         return $config->checkboxUncheckedValue;

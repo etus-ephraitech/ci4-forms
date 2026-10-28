@@ -35,6 +35,14 @@ class MoneyField extends InputField implements SchemaConfigurableInterface
         return $this->currency === 'UGX' ? [] : ['currency' => $this->currency];
     }
 
+    /**
+     * "UGX 1,500,000" when showing stored data.
+     */
+    public function presentValue(mixed $value, Forms $config): array|string
+    {
+        return is_numeric($value) ? $this->currency . ' ' . number_format((float) $value) : parent::presentValue($value, $config);
+    }
+
     public function currency(string $currency): static
     {
         $this->currency = $currency;

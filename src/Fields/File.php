@@ -262,6 +262,14 @@ class File extends InputField implements FileFieldInterface
         return $attributes;
     }
 
+    /**
+     * Never shown when presenting stored data.
+     */
+    public function isPresentable(): bool
+    {
+        return false;
+    }
+
     public function shouldRepopulate(): bool
     {
         return false;

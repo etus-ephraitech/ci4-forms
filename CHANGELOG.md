@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Form::present($data)` turns stored data, such as a saved submission, into readable rows:
+  field labels, option labels instead of values (including groups and provider options),
+  Yes/No for checkboxes and lists for multi-value fields. Values no longer among the options
+  are shown as stored. Passwords, buttons and uploads are never included.
+  `Form::renderPresented($data)` renders them with the new `presented` theme view.
+- `Contracts\PresentableFieldInterface` (`isPresentable()`, `presentValue()`), implemented by
+  every field; custom fields can override `presentValue()`, for example to format amounts.
+- Config `$presentYes`, `$presentNo`, `$presentEmpty` and theme classes `presented`,
+  `presented_label`, `presented_value`, `presented_empty`.
+- A `forms` helper (`helper('forms')`) with `forms_load()`, `forms_check()` and
+  `forms_present()`. Functions are prefixed `forms_` so they never clash with CodeIgniter's
+  `form` helper.
+
 ## [0.3.0] - 2026-10-28
 
 Forms from schemas: load forms from arrays or JSON written by developers or admins, with a

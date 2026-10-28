@@ -6,6 +6,7 @@ namespace Ephraitech\Forms\Fields;
 
 use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Contracts\FieldInterface;
+use Ephraitech\Forms\Contracts\PresentableFieldInterface;
 use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Support\RuleParser;
 use Stringable;
@@ -24,7 +25,7 @@ use Stringable;
  *
  * end() returns the form itself once the last field is defined.
  */
-abstract class Field implements FieldInterface
+abstract class Field implements FieldInterface, PresentableFieldInterface
 {
     /**
      * Type key, overridden by every concrete field.
@@ -507,6 +508,40 @@ abstract class Field implements FieldInterface
     public function valueWhenMissing(Forms $config): mixed
     {
         return $this->isMultiple() ? [] : null;
+    }
+
+    public function isPresentable(): bool
+    {
+        return $this->isSubmittable() || $this->isDisabled();
+    }
+
+    /**
+     * Scalars as text, true/false as the config's Yes/No, lists as lists.
+     * Choice fields override this to show option labels.
+     */
+    public function presentValue(mixed $value, Forms $config): array|string
+    {
+        if ($this->isMultiple() || is_array($value)) {
+            $items = is_array($value) ? $value : ($value === null || $value === '' ? [] : [$value]);
+
+            return array_values(array_filter(
+                array_map(fn (mixed $item): string => $this->presentScalar($item, $config), $items),
+                static fn (string $item): bool => $item !== '',
+            ));
+        }
+
+        return $this->presentScalar($value, $config);
+    }
+
+    protected function presentScalar(mixed $value, Forms $config): string
+    {
+        return match (true) {
+            $value === null              => '',
+            is_bool($value)              => $value ? $config->presentYes : $config->presentNo,
+            is_scalar($value)            => (string) $value,
+            $value instanceof Stringable => (string) $value,
+            default                      => '',
+        };
     }
 
     public function toArray(): array

@@ -84,6 +84,10 @@ class Forms extends BaseConfig
                 'reselect'         => 'form-text text-warning-emphasis',
                 'submit'           => 'btn btn-primary',
                 'error_summary'    => 'alert alert-danger',
+                'presented'           => 'row mb-0',
+                'presented_label'     => 'col-sm-4 fw-semibold',
+                'presented_value'     => 'col-sm-8',
+                'presented_empty'     => 'text-body-secondary',
                 'row'                 => 'row',
                 'column'              => 'col-md-{width}',
                 'column_auto'         => 'col-md',
@@ -211,6 +215,16 @@ class Forms extends BaseConfig
      * @var array<string, array{0: class-string, 1: string}|\Closure|string>
      */
     public array $optionProviders = [];
+
+    /**
+     * Texts used when presenting stored data (Form::present()): a ticked
+     * and an unticked checkbox, and an empty value.
+     */
+    public string $presentYes = 'Yes';
+
+    public string $presentNo = 'No';
+
+    public string $presentEmpty = '—';
 
     /**
      * Value validated() returns for a checkbox that was not ticked. Browsers

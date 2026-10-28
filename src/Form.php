@@ -11,6 +11,7 @@ use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Contracts\ChoiceFieldInterface;
 use Ephraitech\Forms\Contracts\FieldInterface;
 use Ephraitech\Forms\Contracts\FileFieldInterface;
+use Ephraitech\Forms\Contracts\PresentableFieldInterface;
 use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Fields\Checkbox;
 use Ephraitech\Forms\Fields\Checkboxes;
@@ -1310,6 +1311,67 @@ class Form implements Stringable
         $this->oldErrorsLoaded = true;
 
         return $this;
+    }
+
+    // -------------------------------------------------------------------------
+    // Presenting stored data
+    // -------------------------------------------------------------------------
+
+    /**
+     * Stored data (such as a saved submission) as rows people can read: the
+     * field's label and its value as text, with option labels instead of
+     * option values and Yes/No for checkboxes. Rows follow the form's order.
+     * Passwords, buttons and uploads are never included; keys that are not
+     * fields are ignored.
+     *
+     * Labels and values are plain, unescaped text: escape them (esc()) when
+     * printing rows yourself. renderPresented() and forms_present() escape
+     * everything.
+     *
+     * @param array<array-key, mixed>|object $data
+     *
+     * @return list<array{name: string, label: string, value: list<string>|string, text: string, empty: bool}>
+     */
+    public function present(array|object $data, bool $includeEmpty = true): array
+    {
+        $data = $this->toDataArray($data);
+        $rows = [];
+
+        foreach ($this->fields as $name => $field) {
+            if ($field instanceof PresentableFieldInterface && ! $field->isPresentable()) {
+                continue;
+            }
+
+            if (! $field instanceof PresentableFieldInterface && ! $field->isSubmittable()) {
+                continue;
+            }
+
+            $raw   = $data[$name] ?? null;
+            $value = $field instanceof PresentableFieldInterface
+                ? $field->presentValue($raw, $this->config)
+                : (is_scalar($raw) ? (string) $raw : '');
+
+            $text  = is_array($value) ? implode(', ', $value) : $value;
+            $empty = $text === '';
+
+            if ($empty && ! $includeEmpty) {
+                continue;
+            }
+
+            $rows[] = ['name' => $name, 'label' => $field->getLabel(), 'value' => $value, 'text' => $text, 'empty' => $empty];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * present() as HTML, using the theme's "presented" view.
+     *
+     * @param array<array-key, mixed>|object $data
+     */
+    public function renderPresented(array|object $data, bool $includeEmpty = true): string
+    {
+        return $this->getRenderer()->presented($this, $this->present($data, $includeEmpty));
     }
 
     // -------------------------------------------------------------------------

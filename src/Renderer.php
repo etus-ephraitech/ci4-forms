@@ -292,6 +292,22 @@ class Renderer
     }
 
     /**
+     * Rows from Form::present() as HTML.
+     *
+     * @param list<array{name: string, label: string, value: list<string>|string, text: string, empty: bool}> $rows
+     */
+    public function presented(Form $form, array $rows): string
+    {
+        return $this->view('presented', [
+            'form'      => $form,
+            'rows'      => $rows,
+            'emptyText' => $this->config->presentEmpty,
+            'e'         => self::escape(...),
+            'class'     => fn (string $key): string => $this->classAttribute($this->config->classFor($key)),
+        ]);
+    }
+
+    /**
      * The whole form: opening tag, optional error summary, every field and
      * the closing tag.
      */
