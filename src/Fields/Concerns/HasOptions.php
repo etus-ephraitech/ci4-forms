@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Ephraitech\Forms\Fields\Concerns;
 
 use Closure;
+use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Exceptions\FormException;
+use Ephraitech\Forms\Support\OptionProviders;
 use Stringable;
 
 /**
@@ -30,14 +32,45 @@ trait HasOptions
     protected ?array $resolvedOptions = null;
 
     /**
+     * Name of the registered option provider the options come from, if any.
+     */
+    protected ?string $optionProvider = null;
+
+    /**
      * @param array<array-key, mixed>|Closure(): array<array-key, mixed> $options
      */
     public function options(array|Closure $options): static
     {
         $this->optionSource    = $options;
         $this->resolvedOptions = null;
+        $this->optionProvider  = null;
 
         return $this;
+    }
+
+    /**
+     * Takes the options from a provider registered in $optionProviders. The
+     * provider is called once, the first time the options are needed.
+     *
+     * @param Forms|null $config Config holding the providers; the app's by default.
+     */
+    public function optionsFrom(string $provider, ?Forms $config = null): static
+    {
+        $config ??= self::appFormsConfig();
+
+        if (! OptionProviders::has($config, $provider)) {
+            throw FormException::forUnknownOptionProvider($provider, OptionProviders::names($config));
+        }
+
+        $this->options(static fn (): array => OptionProviders::call($config, $provider));
+        $this->optionProvider = $provider;
+
+        return $this;
+    }
+
+    public function getOptionProvider(): ?string
+    {
+        return $this->optionProvider;
     }
 
     /**
@@ -149,6 +182,17 @@ trait HasOptions
     protected function allowsOptionGroups(): bool
     {
         return false;
+    }
+
+    private static function appFormsConfig(): Forms
+    {
+        $class = class_exists(\Config\Forms::class) && is_a(\Config\Forms::class, Forms::class, true)
+            ? \Config\Forms::class
+            : Forms::class;
+
+        $config = config($class);
+
+        return $config instanceof Forms ? $config : new Forms();
     }
 
     private function optionLabel(mixed $label): string

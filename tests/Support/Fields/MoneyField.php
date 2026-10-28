@@ -30,6 +30,11 @@ class MoneyField extends InputField implements SchemaConfigurableInterface
         return ['currency' => 'currency'];
     }
 
+    public function schemaValues(): array
+    {
+        return $this->currency === 'UGX' ? [] : ['currency' => $this->currency];
+    }
+
     public function currency(string $currency): static
     {
         $this->currency = $currency;

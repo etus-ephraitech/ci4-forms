@@ -153,6 +153,23 @@ class FormException extends RuntimeException
         ));
     }
 
+    /**
+     * @param list<string> $available
+     */
+    public static function forUnknownOptionProvider(string $name, array $available): static
+    {
+        return new static(sprintf(
+            'Option provider "%s" is not registered. Registered providers: %s.',
+            $name,
+            $available === [] ? '(none; add them to $optionProviders in app/Config/Forms.php)' : implode(', ', $available),
+        ));
+    }
+
+    public static function forInvalidOptionProvider(string $name, string $reason): static
+    {
+        return new static(sprintf('Option provider "%s" is invalid: %s', $name, $reason));
+    }
+
     public static function forUndefinedMethod(string $class, string $method): static
     {
         return new static(sprintf('Call to undefined method %s::%s().', $class, $method));

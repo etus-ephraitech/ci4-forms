@@ -194,6 +194,25 @@ class Forms extends BaseConfig
     public array $fieldTypes = [];
 
     /**
+     * Named sources of options for select, radio and checkbox group fields.
+     * Schemas refer to them with "options_from": "services"; code with
+     * ->optionsFrom('services'). A provider is [ClassName::class, 'method'],
+     * 'ClassName::method' or a Closure (assigned in the constructor), and
+     * returns value => label pairs:
+     *
+     *     public array $optionProviders = [
+     *         'services' => [\App\Models\ServiceModel::class, 'dropdown'],
+     *     ];
+     *
+     * Register only data that is safe to show on any form that may use it:
+     * admin-written schemas can use every registered provider unless their
+     * SchemaPolicy narrows the list.
+     *
+     * @var array<string, array{0: class-string, 1: string}|\Closure|string>
+     */
+    public array $optionProviders = [];
+
+    /**
      * Value validated() returns for a checkbox that was not ticked. Browsers
      * send nothing for unticked checkboxes, so without this the column would
      * simply be missing from the data.

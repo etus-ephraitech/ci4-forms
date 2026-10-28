@@ -210,6 +210,14 @@ final class FormTest extends CIUnitTestCase
         Form::make('x', $this->config)->hidden('_method');
     }
 
+    public function testCsrfTokenNameIsReserved(): void
+    {
+        $this->expectException(FormException::class);
+        $this->expectExceptionMessage('the field name "' . config(\Config\Security::class)->tokenName . '" is reserved');
+
+        Form::make('x', $this->config)->hidden(config(\Config\Security::class)->tokenName);
+    }
+
     public function testCustomFieldInstanceCanBeAdded(): void
     {
         $form  = Form::make('x', $this->config);

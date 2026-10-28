@@ -36,6 +36,7 @@ use Ephraitech\Forms\Layout\Container;
 use Ephraitech\Forms\Layout\Fieldset;
 use Ephraitech\Forms\Layout\Row;
 use Ephraitech\Forms\Schema\SchemaException;
+use Ephraitech\Forms\Schema\SchemaExporter;
 use Ephraitech\Forms\Schema\SchemaLoader;
 use Ephraitech\Forms\Schema\SchemaPolicy;
 use Ephraitech\Forms\Support\FieldTypes;
@@ -293,6 +294,30 @@ class Form implements Stringable
         return $this;
     }
 
+    /**
+     * Exports the form as a version 1 schema that fromSchema() builds back
+     * into an identical form. Useful as a starting template for admins, or
+     * to move a form from code into data.
+     *
+     * @return array<string, mixed>
+     *
+     * @throws SchemaException When part of the form cannot be written as data, such as a closure rule.
+     */
+    public function toSchema(): array
+    {
+        return (new SchemaExporter())->export($this);
+    }
+
+    /**
+     * The schema as JSON, pretty-printed by default.
+     *
+     * @throws SchemaException
+     */
+    public function toJson(int $flags = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE): string
+    {
+        return (string) json_encode($this->toSchema(), $flags | JSON_THROW_ON_ERROR);
+    }
+
     // -------------------------------------------------------------------------
     // Form settings
     // -------------------------------------------------------------------------
@@ -444,6 +469,14 @@ class Form implements Stringable
     public function needsCsrf(): bool
     {
         return $this->config->csrf && $this->method !== 'get';
+    }
+
+    /**
+     * The id set with id(), or null when the form name is used.
+     */
+    public function getExplicitId(): ?string
+    {
+        return $this->id;
     }
 
     public function getId(): string
@@ -1677,9 +1710,23 @@ class Form implements Stringable
         $this->layout[] = $name;
     }
 
+    /**
+     * The CSRF token name, read from the Security config. csrf_token() is
+     * not used: it starts the Security service, which needs a web request,
+     * so forms could not be built from the command line (spark commands,
+     * queue workers, seeders).
+     */
     private function csrfTokenName(): ?string
     {
-        return function_exists('csrf_token') ? csrf_token() : null;
+        if (! class_exists(\Config\Security::class)) {
+            return null;
+        }
+
+        $security = config(\Config\Security::class);
+
+        return is_object($security) && isset($security->tokenName) && is_string($security->tokenName)
+            ? $security->tokenName
+            : null;
     }
 
     private function validateName(string $name): string

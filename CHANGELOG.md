@@ -30,6 +30,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and can be customised (`allowTypes()`, `allowRules()`, `allowAttributes()`, `allowMimes()`,
   `forbidNames()`, `allowNames()`, `withLimits()`, `withMaxUploadSize()`, `allowAction()`);
   unsafe allowances such as `on*` attributes or SVG uploads are refused.
+- Option providers: named sources of options registered in `$optionProviders`
+  (`[ClassName::class, 'method']` for static methods, CodeIgniter models or plain classes,
+  `'ClassName::method'`, or a Closure). Schemas use `"options_from": "services"`; code uses
+  `->optionsFrom('services')`. Providers run lazily, once per field, and never while a schema
+  is loaded or checked; strict option checking uses their options. `SchemaPolicy` can narrow
+  which providers admin schemas may use (`onlyProviders()`, `disallowProviders()`).
+  `Support\OptionProviders` checks registrations; `getOptionProvider()` on choice fields.
+- `Form::toSchema()` and `Form::toJson()` export any form, including form classes, as a
+  version 1 schema that loads back into an identical form (same schema, same HTML, same
+  validation). Provider options are exported as `options_from`; attributes with their own key
+  (`autocomplete`, `rows`, `step`, `min`, ...) are exported under it. Closure rules and
+  unregistered custom field classes make the export fail with their location.
+- `Schema\FormSchema::check()` for admin screens: checks array or JSON input without throwing
+  and returns a `SchemaCheck` (`isValid()`, `getErrors()`, `getMessages()`, `getErrorsFor()`,
+  `getSchema()`, `toArray()` for JSON responses); restricted by default.
+  `FormSchema::load()` and `FormSchema::export()` shortcuts.
+- `php spark forms:schema check <file> [--trusted]` and
+  `php spark forms:schema export <FormClass> [--output <file>]`.
+- `SchemaConfigurableInterface::schemaValues()` so custom fields can export their extra keys;
+  `Field::getExplicitId()`, `Field::getOwnAttributes()`, `Form::getExplicitId()`,
+  `File::isUploadRequired()`, `File::getExtraRules()`.
+
+### Fixed
+
+- Forms could not be created on the command line (spark commands, queue workers, seeders):
+  checking reserved field names called `csrf_token()`, which starts the Security service and
+  needs a web request. The CSRF token name is now read from the Security config.
 - A source-integrity test that fails when a docblock missing its closing `*/` hides class
   members.
 

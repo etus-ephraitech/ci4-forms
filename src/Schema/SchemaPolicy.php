@@ -23,6 +23,10 @@ use Ephraitech\Forms\Exceptions\FormException;
  * - password and hidden fields
  * - oversized schemas (field count, nesting, options, text length)
  *
+ * Option providers are registered by developers, so admin schemas may use
+ * every registered provider unless onlyProviders() or disallowProviders()
+ * narrows the list.
+ *
  * Schemas written by developers and committed with the code can use
  * SchemaPolicy::trusted(), which only checks structure.
  *
@@ -179,6 +183,8 @@ final class SchemaPolicy
         private array $limits = [],
         private int $maxUploadKb = 0,
         private bool $actionAllowed = false,
+        private ?array $providers = null,
+        private array $blockedProviders = [],
     ) {
     }
 
@@ -377,6 +383,30 @@ final class SchemaPolicy
     }
 
     /**
+     * Limits schemas to these registered option providers. By default every
+     * registered provider may be used.
+     */
+    public function onlyProviders(string ...$names): self
+    {
+        $policy            = $this->restrictedCopy();
+        $policy->providers = array_values(array_unique($names));
+
+        return $policy;
+    }
+
+    /**
+     * Keeps schemas from using these registered option providers, for
+     * example one listing staff that should only appear on internal forms.
+     */
+    public function disallowProviders(string ...$names): self
+    {
+        $policy                   = $this->restrictedCopy();
+        $policy->blockedProviders = array_values(array_unique([...$policy->blockedProviders, ...$names]));
+
+        return $policy;
+    }
+
+    /**
      * Lets schemas set the form action. Only allow this when every possible
      * action is safe: a schema could otherwise send submissions elsewhere.
      */
@@ -456,6 +486,22 @@ final class SchemaPolicy
     public function getMaxUploadSize(): int
     {
         return $this->trusted ? PHP_INT_MAX : $this->maxUploadKb;
+    }
+
+    /**
+     * Whether a schema may use a registered option provider.
+     */
+    public function allowsProvider(string $name): bool
+    {
+        if ($this->trusted) {
+            return true;
+        }
+
+        if (in_array($name, $this->blockedProviders, true)) {
+            return false;
+        }
+
+        return $this->providers === null || in_array($name, $this->providers, true);
     }
 
     public function allowsAction(): bool

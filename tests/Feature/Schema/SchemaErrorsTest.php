@@ -201,7 +201,7 @@ final class SchemaErrorsTest extends CIUnitTestCase
 
     public function testOptions(): void
     {
-        $this->assertSame(['fields[0].options: is required for a "select" field.'], $this->fieldErrors(['type' => 'select', 'name' => 'a']));
+        $this->assertSame(['fields[0].options: is required for a "select" field (or use "options_from" with a registered provider).'], $this->fieldErrors(['type' => 'select', 'name' => 'a']));
         $this->assertSame(
             ['fields[0].options: must be an object of value to label, such as {"fitting": "Suit fitting"}, not a list.'],
             $this->fieldErrors(['type' => 'radio', 'name' => 'a', 'options' => ['Cash', 'Card']]),

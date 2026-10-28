@@ -394,6 +394,25 @@ abstract class Field implements FieldInterface
         return $this->width;
     }
 
+    /**
+     * The id set with id(), or null when ids are generated.
+     */
+    public function getExplicitId(): ?string
+    {
+        return $this->id;
+    }
+
+    /**
+     * Attributes set on the field itself, without any a subclass adds when
+     * rendering (such as a file field's generated accept attribute).
+     *
+     * @return array<string, bool|float|int|string|Stringable|null>
+     */
+    public function getOwnAttributes(): array
+    {
+        return $this->attributes;
+    }
+
     public function getId(string $prefix = ''): string
     {
         if ($this->id !== null) {

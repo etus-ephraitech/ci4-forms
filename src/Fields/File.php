@@ -174,6 +174,24 @@ class File extends InputField implements FileFieldInterface
         return $this->multiple;
     }
 
+    /**
+     * Whether required() was set.
+     */
+    public function isUploadRequired(): bool
+    {
+        return $this->uploadRequired;
+    }
+
+    /**
+     * Rules set with rules(), without the ones the helpers generate.
+     *
+     * @return list<callable|string>
+     */
+    public function getExtraRules(): array
+    {
+        return $this->rules;
+    }
+
     public function isRequired(): bool
     {
         return $this->uploadRequired || RuleParser::has($this->rules, 'uploaded');
@@ -253,6 +271,7 @@ class File extends InputField implements FileFieldInterface
     {
         return array_merge(parent::toArray(), [
             'rules'          => array_values(array_filter($this->getRules(), 'is_string')),
+            'required'       => $this->uploadRequired,
             'max_size'       => $this->maxSize,
             'extensions'     => $this->extensions,
             'mimes'          => $this->mimes,

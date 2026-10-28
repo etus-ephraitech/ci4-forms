@@ -11,6 +11,7 @@ use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Fields\Field;
 use Ephraitech\Forms\Form;
 use Ephraitech\Forms\Support\FieldTypes;
+use Ephraitech\Forms\Support\OptionProviders;
 use Ephraitech\Forms\Support\RuleParser;
 use JsonException;
 use TypeError;
@@ -54,7 +55,7 @@ final class SchemaLoader
 
     private const TEXT_LIKE = [...self::VALUE, 'placeholder', 'autocomplete'];
 
-    private const CHOICE = ['options', 'strict_options'];
+    private const CHOICE = ['options', 'options_from', 'strict_options'];
 
     /**
      * Pointers for keys people often try from HTML habits.
@@ -73,7 +74,7 @@ final class SchemaLoader
     /**
      * Keys each built-in type accepts.
      */
-    private const TYPE_KEYS = [
+    public const TYPE_KEYS = [
         'text'           => self::TEXT_LIKE,
         'email'          => self::TEXT_LIKE,
         'password'       => self::TEXT_LIKE,
@@ -95,7 +96,7 @@ final class SchemaLoader
         'submit'         => ['type', 'name', 'label', 'id', 'classes', 'attributes', 'width', 'disabled'],
     ];
 
-    private const GROUP_KEYS = [
+    public const GROUP_KEYS = [
         'row'      => ['type', 'children', 'classes', 'width'],
         'fieldset' => ['type', 'legend', 'description', 'id', 'classes', 'width', 'children'],
     ];
@@ -113,6 +114,7 @@ final class SchemaLoader
         'attributes'     => 'attributes',
         'width'          => 'width',
         'options'        => 'options',
+        'options_from'   => 'optionsFrom',
         'multiple'       => 'multiple',
         'size'           => 'size',
         'inline'         => 'inline',
@@ -560,8 +562,15 @@ final class SchemaLoader
 
         $this->names[$name] = true;
 
-        if (in_array($type, ['select', 'radio', 'checkboxes'], true) && ! array_key_exists('options', $node)) {
-            $this->error($path . '.options', 'is required for a "' . $type . '" field.');
+        if (in_array($type, ['select', 'radio', 'checkboxes'], true)) {
+            $hasOptions  = array_key_exists('options', $node);
+            $hasProvider = array_key_exists('options_from', $node);
+
+            if (! $hasOptions && ! $hasProvider) {
+                $this->error($path . '.options', 'is required for a "' . $type . '" field (or use "options_from" with a registered provider).');
+            } elseif ($hasOptions && $hasProvider) {
+                $this->error($path . '.options_from', 'cannot be combined with "options"; use one or the other.');
+            }
         }
 
         if ($type === 'select' && array_key_exists('each_rules', $node) && ($node['multiple'] ?? false) !== true) {
@@ -599,6 +608,7 @@ final class SchemaLoader
                 'rules', 'each_rules' => [$this->ruleList($value)],
                 'messages'       => [$this->stringMap($value)],
                 'options'        => [$this->optionMap($value, $key === 'options' && ($node['type'] ?? '') === 'select')],
+                'options_from'   => [$this->providerName($value, $path), $this->config],
                 'default'        => [$this->defaultValue($value, $field, $node)],
                 'max_dimensions' => $this->dimensions($value),
                 'extensions', 'mimes' => [$this->stringList($value)],
@@ -669,6 +679,33 @@ final class SchemaLoader
     // -------------------------------------------------------------------------
     // Value checks
     // -------------------------------------------------------------------------
+
+    /**
+     * A registered provider the policy allows. Checked here, not called:
+     * loading a schema never runs a provider.
+     */
+    private function providerName(mixed $value, string $path): string
+    {
+        if (! is_string($value) || $value === '') {
+            throw new FormException('must be the name of a registered option provider.');
+        }
+
+        if (! OptionProviders::has($this->config, $value)) {
+            $names = OptionProviders::names($this->config);
+
+            throw new FormException(sprintf(
+                '"%s" is not a registered option provider%s',
+                $value,
+                $names === [] ? ' (none are registered).' : $this->suggest($value, $names) . '. Registered: ' . implode(', ', $names) . '.',
+            ));
+        }
+
+        if (! $this->policy->allowsProvider($value)) {
+            throw new FormException(sprintf('the "%s" option provider is not allowed in this schema.', $value));
+        }
+
+        return $value;
+    }
 
     private function string(mixed $value): string
     {
