@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Schema loading: `Form::fromSchema()`, `Form::fromJson()` and `$form->loadSchema()` build
+  forms from arrays or JSON (schema version 1): every built-in field type and option, rows and
+  fieldsets, form settings, and registered custom types. Loading is all or nothing: the
+  schema is first built on a scratch form and every error is collected with its location
+  (`fields[2].children[0].max_size: ...`), including typo suggestions and hints for HTML
+  habits such as `maxlength`. Keys are applied in schema order.
+- `Schema\SchemaException` with `getErrors()` and `getMessages()`; `Schema\SchemaLoader::errors()`
+  checks a schema without loading it.
+- `Contracts\SchemaConfigurableInterface` lets custom field types accept extra schema keys.
+- A source-integrity test that fails when a docblock missing its closing `*/` hides class
+  members.
+
 ## [0.2.0] - 2026-10-28
 
 Multi-value fields, strict option checking, file uploads, layout, new inputs and custom field

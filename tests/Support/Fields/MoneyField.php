@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Ephraitech\Forms\Tests\Support\Fields;
 
 use Ephraitech\Forms\Config\Forms;
+use Ephraitech\Forms\Contracts\SchemaConfigurableInterface;
 use Ephraitech\Forms\Fields\InputField;
 
 /**
  * Example custom field: an amount with a currency prefix and its own view.
  * Accepts "1,250,000" and returns "1250000".
  */
-class MoneyField extends InputField
+class MoneyField extends InputField implements SchemaConfigurableInterface
 {
     public const TYPE = 'money';
 
@@ -20,6 +21,14 @@ class MoneyField extends InputField
     public const INPUT_TYPE = 'text';
 
     protected string $currency = 'UGX';
+
+    /**
+     * Lets schemas set the currency: {"type": "money", "currency": "USD"}.
+     */
+    public static function schemaProperties(): array
+    {
+        return ['currency' => 'currency'];
+    }
 
     public function currency(string $currency): static
     {

@@ -35,6 +35,8 @@ use Ephraitech\Forms\Fields\Url;
 use Ephraitech\Forms\Layout\Container;
 use Ephraitech\Forms\Layout\Fieldset;
 use Ephraitech\Forms\Layout\Row;
+use Ephraitech\Forms\Schema\SchemaException;
+use Ephraitech\Forms\Schema\SchemaLoader;
 use Ephraitech\Forms\Support\FieldTypes;
 use Ephraitech\Forms\Support\RuleParser;
 use Stringable;
@@ -228,6 +230,59 @@ class Form implements Stringable
     public static function make(?string $name = null, ?Forms $config = null): static
     {
         return new static($name, $config);
+    }
+
+    /**
+     * Builds a form from a schema array (see Schema\SchemaLoader for the
+     * format). The schema is checked completely first; on any error a
+     * SchemaException lists every problem and no form is created.
+     *
+     * @param array<array-key, mixed> $schema
+     *
+     * @throws SchemaException
+     */
+    public static function fromSchema(array $schema, ?Forms $config = null): static
+    {
+        $config ??= static::resolveConfig();
+        $loader   = new SchemaLoader($config);
+        $errors   = $loader->errors($schema);
+
+        if ($errors !== []) {
+            throw SchemaException::forErrors($errors);
+        }
+
+        $name = isset($schema['name']) && is_string($schema['name']) ? $schema['name'] : null;
+        $form = new static($name, $config);
+
+        $loader->load($schema, $form);
+
+        return $form;
+    }
+
+    /**
+     * Builds a form from a JSON schema.
+     *
+     * @throws SchemaException When the JSON or the schema is invalid.
+     */
+    public static function fromJson(string $json, ?Forms $config = null): static
+    {
+        return static::fromSchema(SchemaLoader::decodeJson($json), $config);
+    }
+
+    /**
+     * Adds a schema's fields (and settings) to this form, for example inside
+     * define() to combine code and data. All or nothing: on any error the
+     * form is left unchanged.
+     *
+     * @param array<array-key, mixed> $schema
+     *
+     * @throws SchemaException
+     */
+    public function loadSchema(array $schema): static
+    {
+        (new SchemaLoader($this->config))->load($schema, $this);
+
+        return $this;
     }
 
     // -------------------------------------------------------------------------
