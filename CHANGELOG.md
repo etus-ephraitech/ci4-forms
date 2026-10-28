@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Schema\SchemaException` with `getErrors()` and `getMessages()`; `Schema\SchemaLoader::errors()`
   checks a schema without loading it.
 - `Contracts\SchemaConfigurableInterface` lets custom field types accept extra schema keys.
+- `Schema\SchemaPolicy`: every schema is checked against a policy, restricted by default
+  (`Form::fromSchema()`, `fromJson()` and `loadSchema()` all take an optional `policy`).
+  `SchemaPolicy::restricted()`, for schemas written by admins or clients, blocks event-handler
+  and behaviour attributes (`on*`, `formaction`, `style`, `data-*`), rules outside an
+  allow-list with checked parameters (no `is_unique`, `regex_match` or custom rules), a
+  schema-set form action, uploads without `max_size` (capped at 10 MB) or without an
+  explicit `mimes` list from safe types (no SVG or HTML), protected field names such as
+  `role` and `is_admin`, `password` and `hidden` fields, unlisted custom types, and oversized
+  schemas. `SchemaPolicy::trusted()` is for developer-written schemas. Policies are immutable
+  and can be customised (`allowTypes()`, `allowRules()`, `allowAttributes()`, `allowMimes()`,
+  `forbidNames()`, `allowNames()`, `withLimits()`, `withMaxUploadSize()`, `allowAction()`);
+  unsafe allowances such as `on*` attributes or SVG uploads are refused.
 - A source-integrity test that fails when a docblock missing its closing `*/` hides class
   members.
 

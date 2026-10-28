@@ -11,11 +11,15 @@ use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Fields\Field;
 use Ephraitech\Forms\Form;
 use Ephraitech\Forms\Support\FieldTypes;
+use Ephraitech\Forms\Support\RuleParser;
 use JsonException;
 use TypeError;
 
 /**
  * Builds forms from schemas: plain arrays, usually decoded from JSON.
+ *
+ * Every schema is checked against a SchemaPolicy: restricted (for schemas
+ * written by admins or clients) unless a trusted policy is passed.
  *
  * Loading is all or nothing. The schema is first built on a scratch form,
  * collecting every error with its location; only a schema without errors
@@ -148,8 +152,26 @@ final class SchemaLoader
      */
     private array $names = [];
 
-    public function __construct(private readonly Forms $config)
+    /**
+     * Every field name in the schema and the target form, for rules that
+     * name another field (matches, required_with).
+     *
+     * @var array<string, true>
+     */
+    private array $allNames = [];
+
+    private int $fieldCount = 0;
+
+    private readonly SchemaPolicy $policy;
+
+    public function __construct(private readonly Forms $config, ?SchemaPolicy $policy = null)
     {
+        $this->policy = $policy ?? SchemaPolicy::restricted();
+    }
+
+    public function getPolicy(): SchemaPolicy
+    {
+        return $this->policy;
     }
 
     /**
@@ -189,13 +211,7 @@ final class SchemaLoader
     {
         $scratch = Form::make('schema_check', $this->config);
 
-        $this->errors = [];
-        $this->names  = [];
-
-        foreach (array_keys($into?->getFields() ?? []) as $name) {
-            $this->names[$name] = true;
-        }
-
+        $this->reset($schema, $into);
         $this->build($schema, $scratch, $into);
 
         return $this->errors;
@@ -216,13 +232,7 @@ final class SchemaLoader
             throw SchemaException::forErrors($errors);
         }
 
-        $this->errors = [];
-        $this->names  = [];
-
-        foreach (array_keys($form->getFields()) as $name) {
-            $this->names[$name] = true;
-        }
-
+        $this->reset($schema, $form);
         $this->build($schema, $form, $form);
 
         if ($this->errors !== []) {
@@ -235,6 +245,46 @@ final class SchemaLoader
     // -------------------------------------------------------------------------
     // Building
     // -------------------------------------------------------------------------
+
+    /**
+     * @param array<array-key, mixed> $schema
+     */
+    private function reset(array $schema, ?Form $into): void
+    {
+        $this->errors     = [];
+        $this->names      = [];
+        $this->allNames   = [];
+        $this->fieldCount = 0;
+
+        foreach (array_keys($into?->getFields() ?? []) as $name) {
+            $this->names[$name]    = true;
+            $this->allNames[$name] = true;
+        }
+
+        if (isset($schema['fields']) && is_array($schema['fields'])) {
+            $this->collectNames($schema['fields']);
+        }
+    }
+
+    /**
+     * @param array<array-key, mixed> $nodes
+     */
+    private function collectNames(array $nodes): void
+    {
+        foreach ($nodes as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+
+            if (isset($node['name']) && is_string($node['name'])) {
+                $this->allNames[$node['name']] = true;
+            }
+
+            if (isset($node['children']) && is_array($node['children'])) {
+                $this->collectNames($node['children']);
+            }
+        }
+    }
 
     /**
      * @param array<array-key, mixed> $schema
@@ -273,13 +323,17 @@ final class SchemaLoader
             $form->method($value);
         });
 
-        $this->formSetting($schema, 'action', $form, static function (Form $form, mixed $value): void {
-            if (! is_string($value)) {
-                throw new FormException('must be a string.');
-            }
+        if (array_key_exists('action', $schema) && ! $this->policy->allowsAction()) {
+            $this->error('action', 'cannot be set in this schema; the application decides where the form is sent.');
+        } else {
+            $this->formSetting($schema, 'action', $form, static function (Form $form, mixed $value): void {
+                if (! is_string($value)) {
+                    throw new FormException('must be a string.');
+                }
 
-            $form->action($value);
-        });
+                $form->action($value);
+            });
+        }
 
         $this->formSetting($schema, 'id', $form, static function (Form $form, mixed $value): void {
             if ($value !== null && ! is_string($value)) {
@@ -294,8 +348,20 @@ final class SchemaLoader
         });
 
         $this->formSetting($schema, 'attributes', $form, function (Form $form, mixed $value): void {
-            $form->attributes($this->attributeMap($value));
+            $attributes = $this->attributeMap($value);
+
+            foreach (array_keys($attributes) as $name) {
+                if (! $this->policy->allowsAttribute((string) $name)) {
+                    throw new FormException(sprintf('the "%s" attribute is not allowed in this schema.', $name));
+                }
+            }
+
+            $form->attributes($attributes);
         });
+
+        if (isset($schema['id']) && is_string($schema['id'])) {
+            $this->checkText($schema['id'], 'id');
+        }
 
         if (! array_key_exists('fields', $schema)) {
             $this->error('fields', 'is required: a list of fields and groups.');
@@ -309,20 +375,20 @@ final class SchemaLoader
             return;
         }
 
-        $this->nodes($form, $schema['fields'], 'fields');
+        $this->nodes($form, $schema['fields'], 'fields', 1);
     }
 
     /**
      * @param list<mixed> $nodes
      */
-    private function nodes(Form $form, array $nodes, string $path): void
+    private function nodes(Form $form, array $nodes, string $path, int $depth): void
     {
         foreach ($nodes as $index => $node) {
-            $this->node($form, $node, $path . '[' . $index . ']');
+            $this->node($form, $node, $path . '[' . $index . ']', $depth);
         }
     }
 
-    private function node(Form $form, mixed $node, string $path): void
+    private function node(Form $form, mixed $node, string $path, int $depth): void
     {
         if (! is_array($node) || ($node !== [] && array_is_list($node))) {
             $this->error($path, 'must be an object with a "type".');
@@ -339,7 +405,13 @@ final class SchemaLoader
         }
 
         if (isset(self::GROUP_KEYS[$type])) {
-            $this->group($form, $type, $node, $path);
+            if ($depth > $this->policy->limit('max_depth')) {
+                $this->error($path, sprintf('groups are nested more than %d levels deep.', $this->policy->limit('max_depth')));
+
+                return;
+            }
+
+            $this->group($form, $type, $node, $path, $depth);
 
             return;
         }
@@ -350,7 +422,7 @@ final class SchemaLoader
     /**
      * @param array<array-key, mixed> $node
      */
-    private function group(Form $form, string $type, array $node, string $path): void
+    private function group(Form $form, string $type, array $node, string $path, int $depth): void
     {
         $this->unknownKeys($node, self::GROUP_KEYS[$type], $path, 'a ' . $type);
 
@@ -370,10 +442,15 @@ final class SchemaLoader
                 $this->error($path . '.legend', 'must be a string.');
             } else {
                 $legend = $node['legend'];
+                $this->checkText($legend, $path . '.legend');
             }
         }
 
-        $define    = fn (Form $form) => $this->nodes($form, $children, $path . '.children');
+        if (isset($node['description']) && is_string($node['description'])) {
+            $this->checkText($node['description'], $path . '.description');
+        }
+
+        $define    = fn (Form $form) => $this->nodes($form, $children, $path . '.children', $depth + 1);
         $container = $type === 'row' ? $form->row($define) : $form->fieldset($legend, $define);
 
         $this->groupSetting($node, $path, 'classes', function () use ($container, $node): void {
@@ -421,6 +498,16 @@ final class SchemaLoader
             return;
         }
 
+        if (! $this->policy->allowsType($type)) {
+            $this->error($path . '.type', sprintf('"%s" fields are not allowed in this schema. Allowed types: %s.', $type, implode(', ', $this->policy->getTypes())));
+
+            return;
+        }
+
+        if (++$this->fieldCount === $this->policy->limit('max_fields') + 1) {
+            $this->error($path, sprintf('the schema has more than %d fields.', $this->policy->limit('max_fields')));
+        }
+
         $extras  = is_subclass_of($class, SchemaConfigurableInterface::class) ? $class::schemaProperties() : [];
         $allowed = self::TYPE_KEYS[$type] ?? [...(is_subclass_of($class, Field::class) ? self::TEXT_LIKE : ['type', 'name', 'label']), ...array_keys($extras)];
 
@@ -440,11 +527,27 @@ final class SchemaLoader
             return;
         }
 
+        if (strlen($name) > $this->policy->limit('max_name_length')) {
+            $this->error($path . '.name', sprintf('must be at most %d characters.', $this->policy->limit('max_name_length')));
+
+            return;
+        }
+
+        if ($this->policy->forbidsName($name)) {
+            $this->error($path . '.name', sprintf('"%s" is not allowed as a field name in this schema; it could overwrite protected data.', $name));
+
+            return;
+        }
+
         $label = $node['label'] ?? null;
 
         if ($label !== null && ! is_string($label)) {
             $this->error($path . '.label', 'must be a string.');
             $label = null;
+        }
+
+        if ($label !== null) {
+            $this->checkText($label, $path . '.label');
         }
 
         try {
@@ -473,6 +576,10 @@ final class SchemaLoader
             } elseif (isset($extras[$key])) {
                 $this->apply($field, $key, $extras[$key], $value, $path . '.' . $key, $node);
             }
+        }
+
+        if ($type === 'file') {
+            $this->checkUpload($node, $path);
         }
     }
 
@@ -507,6 +614,10 @@ final class SchemaLoader
 
             if (! method_exists($field, $method)) {
                 throw new FormException('is not supported by this field type.');
+            }
+
+            if (! $this->policy->isTrusted() && ! $this->allowedByPolicy($key, $arguments, $path)) {
+                return;
             }
 
             $field->{$method}(...$arguments);
@@ -794,6 +905,235 @@ final class SchemaLoader
         }
 
         return $value;
+    }
+
+    // -------------------------------------------------------------------------
+    // Policy checks
+    // -------------------------------------------------------------------------
+
+    /**
+     * Checks a shape-checked value against the policy. Reports and returns
+     * false when it is not allowed, so the setter is not called.
+     *
+     * @param list<mixed> $arguments
+     */
+    private function allowedByPolicy(string $key, array $arguments, string $path): bool
+    {
+        $before = count($this->errors);
+        $value  = $arguments[0] ?? null;
+
+        switch ($key) {
+            case 'rules':
+            case 'each_rules':
+                $this->checkRules($value, $path);
+                break;
+
+            case 'attributes':
+                foreach ($value as $name => $attribute) {
+                    if (! $this->policy->allowsAttribute((string) $name)) {
+                        $this->error($path, sprintf('the "%s" attribute is not allowed in this schema.', $name));
+                    } elseif (is_string($attribute)) {
+                        $this->checkText($attribute, $path . '.' . $name);
+                    }
+                }
+                break;
+
+            case 'classes':
+                if (count($arguments) > $this->policy->limit('max_classes')) {
+                    $this->error($path, sprintf('at most %d classes are allowed.', $this->policy->limit('max_classes')));
+                }
+
+                foreach ($arguments as $class) {
+                    if (preg_match('/^[A-Za-z0-9_\-\s]*$/', $class) !== 1) {
+                        $this->error($path, sprintf('"%s" is not a valid class name.', $class));
+                    }
+                }
+                break;
+
+            case 'messages':
+                foreach ($value as $rule => $message) {
+                    $this->checkText($message, $path . '.' . $rule);
+                }
+                break;
+
+            case 'options':
+                $this->checkOptions($value, $path);
+                break;
+
+            case 'help':
+            case 'placeholder':
+            case 'autocomplete':
+            case 'id':
+            case 'min':
+            case 'max':
+                if (is_string($value)) {
+                    $this->checkText($value, $path);
+                }
+                break;
+
+            case 'default':
+                foreach (is_array($value) ? $value : [$value] as $item) {
+                    if (is_string($item)) {
+                        $this->checkText($item, $path);
+                    }
+                }
+                break;
+
+            case 'checked_value':
+                if (is_string($value)) {
+                    $this->checkText($value, $path);
+                }
+                break;
+        }
+
+        return count($this->errors) === $before;
+    }
+
+    /**
+     * @param list<string>|string $rules
+     */
+    private function checkRules(array|string $rules, string $path): void
+    {
+        $list = RuleParser::split($rules) ?? [];
+
+        if (count($list) > $this->policy->limit('max_rules')) {
+            $this->error($path, sprintf('at most %d rules are allowed.', $this->policy->limit('max_rules')));
+
+            return;
+        }
+
+        foreach ($list as $rule) {
+            if (! is_string($rule)) {
+                $this->error($path, 'only rule names are allowed.');
+
+                continue;
+            }
+
+            $name = RuleParser::name($rule);
+            $kind = $this->policy->ruleParameterKind($name);
+
+            if ($kind === null) {
+                $reason = SchemaPolicy::BLOCKED_RULE_REASONS[$name] ?? 'it is not on the list of rules allowed in schemas';
+                $this->error($path, sprintf('the "%s" rule is not allowed in this schema: %s.', $name, $reason));
+
+                continue;
+            }
+
+            $problem = $this->ruleParameterProblem($kind, RuleParser::param($rule));
+
+            if ($problem !== null) {
+                $this->error($path, sprintf('"%s": %s', $rule, $problem));
+            }
+        }
+    }
+
+    /**
+     * Why a rule parameter is not acceptable, or null when it is.
+     */
+    private function ruleParameterProblem(string $kind, ?string $param): ?string
+    {
+        $items = $param === null ? [] : array_map('trim', explode(',', $param));
+
+        return match ($kind) {
+            SchemaPolicy::PARAM_NONE => $param === null ? null : 'this rule takes no parameter.',
+
+            SchemaPolicy::PARAM_INT => $param !== null && ctype_digit(trim($param)) && (int) $param <= 1_000_000
+                ? null : 'the parameter must be a whole number such as [100].',
+
+            SchemaPolicy::PARAM_INTS => $param !== null && count($items) <= 10 && array_filter($items, static fn (string $i): bool => ctype_digit($i)) === $items
+                ? null : 'the parameter must be one or more whole numbers such as [6] or [6,8].',
+
+            SchemaPolicy::PARAM_NUMBER => $param !== null && is_numeric(trim($param))
+                ? null : 'the parameter must be a number such as [0].',
+
+            SchemaPolicy::PARAM_FIELD => $param !== null && isset($this->allNames[trim($param)])
+                ? null : 'the parameter must be the name of another field in this form.',
+
+            SchemaPolicy::PARAM_FIELDS => $param !== null && $items !== [] && array_filter($items, fn (string $i): bool => isset($this->allNames[$i])) === $items
+                ? null : 'the parameter must list other fields in this form, such as [phone,email].',
+
+            SchemaPolicy::PARAM_LIST => $param !== null && $param !== '' && count($items) <= 100 && strlen($param) <= 2000
+                ? null : 'the parameter must be a list of at most 100 values.',
+
+            SchemaPolicy::PARAM_OPTIONAL_SCHEMES => $param === null || array_filter($items, static fn (string $i): bool => preg_match('/^[a-z][a-z0-9+.\-]{0,19}$/', $i) === 1) === $items
+                ? null : 'the parameter must list URL schemes such as [https].',
+
+            SchemaPolicy::PARAM_OPTIONAL_DATE_FORMAT => $param === null || (strlen($param) <= 30 && preg_match('/^[dDjlNSwzWFmMntLoYyaABgGhHisuveIOPpTZcrU\-\/:.,\s\\\\]+$/', $param) === 1)
+                ? null : 'the parameter must be a date format such as [Y-m-d].',
+
+            default => 'this rule cannot be checked.',
+        };
+    }
+
+    /**
+     * @param array<array-key, mixed> $options
+     */
+    private function checkOptions(array $options, string $path): void
+    {
+        $count = 0;
+
+        foreach ($options as $value => $label) {
+            $group = is_array($label) ? $label : [$value => $label];
+
+            if (is_array($label)) {
+                $this->checkText((string) $value, $path);
+            }
+
+            foreach ($group as $optionValue => $optionLabel) {
+                $count++;
+                $this->checkText((string) $optionValue, $path);
+                $this->checkText((string) $optionLabel, $path);
+            }
+        }
+
+        if ($count > $this->policy->limit('max_options')) {
+            $this->error($path, sprintf('at most %d options are allowed.', $this->policy->limit('max_options')));
+        }
+    }
+
+    /**
+     * File fields from restricted schemas need a size limit within the
+     * policy's ceiling and an explicit list of allowed content types (the
+     * "image" check alone also accepts SVG, which can carry script).
+     *
+     * @param array<array-key, mixed> $node
+     */
+    private function checkUpload(array $node, string $path): void
+    {
+        if ($this->policy->isTrusted()) {
+            return;
+        }
+
+        $ceiling = $this->policy->getMaxUploadSize();
+
+        if (! array_key_exists('max_size', $node)) {
+            $this->error($path . '.max_size', sprintf('is required for file fields in this schema (at most %d kilobytes).', $ceiling));
+        } elseif (is_int($node['max_size']) && $node['max_size'] > $ceiling) {
+            $this->error($path . '.max_size', sprintf('must be at most %d kilobytes.', $ceiling));
+        }
+
+        if (! array_key_exists('mimes', $node)) {
+            $this->error($path . '.mimes', 'is required for file fields in this schema: list the allowed types, such as ["image/jpeg", "image/png", "application/pdf"].');
+
+            return;
+        }
+
+        foreach ((array) $node['mimes'] as $mime) {
+            if (is_string($mime) && ! $this->policy->allowsMime($mime)) {
+                $this->error($path . '.mimes', sprintf('"%s" uploads are not allowed in this schema.', $mime));
+            }
+        }
+    }
+
+    private function checkText(string $text, string $path): void
+    {
+        if ($this->policy->isTrusted()) {
+            return;
+        }
+
+        if (mb_strlen($text) > $this->policy->limit('max_text')) {
+            $this->error($path, sprintf('must be at most %d characters.', $this->policy->limit('max_text')));
+        }
     }
 
     // -------------------------------------------------------------------------

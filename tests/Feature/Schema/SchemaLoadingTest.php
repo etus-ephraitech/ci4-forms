@@ -15,10 +15,13 @@ use Ephraitech\Forms\Form;
 use Ephraitech\Forms\Layout\Fieldset;
 use Ephraitech\Forms\Layout\Row;
 use Ephraitech\Forms\Schema\SchemaException;
+use Ephraitech\Forms\Schema\SchemaPolicy;
 use Ephraitech\Forms\Tests\Support\Fields\MoneyField;
 
 /**
- * Building forms from valid schemas.
+ * Building forms from valid schemas. These are developer-written schemas, so
+ * they load with the trusted policy; SchemaPolicyTest covers restricted
+ * loading.
  *
  * @internal
  */
@@ -39,7 +42,7 @@ final class SchemaLoadingTest extends CIUnitTestCase
      */
     private function load(array $schema): Form
     {
-        return Form::fromSchema($schema, $this->config)->setOldInput(null)->setOldErrors(null);
+        return Form::fromSchema($schema, $this->config, SchemaPolicy::trusted())->setOldInput(null)->setOldErrors(null);
     }
 
     public function testMinimalSchema(): void
@@ -236,7 +239,7 @@ final class SchemaLoadingTest extends CIUnitTestCase
 
     public function testFromJson(): void
     {
-        $form = Form::fromJson('{"name":"x","fields":[{"type":"select","name":"service_id","options":{"1":"Fitting","2":"Alterations"}}]}', $this->config);
+        $form = Form::fromJson('{"name":"x","fields":[{"type":"select","name":"service_id","options":{"1":"Fitting","2":"Alterations"}}]}', $this->config, SchemaPolicy::trusted());
 
         $this->assertSame(['1', '2'], $form->getField('service_id')->getOptionValues());
     }
@@ -282,7 +285,7 @@ final class SchemaLoadingTest extends CIUnitTestCase
             }
         };
 
-        $form = $class::fromSchema(['fields' => [['type' => 'text', 'name' => 'note']]], $this->config);
+        $form = $class::fromSchema(['fields' => [['type' => 'text', 'name' => 'note']]], $this->config, SchemaPolicy::trusted());
 
         $this->assertSame(['customer_id', 'note'], array_keys($form->getFields()));
     }

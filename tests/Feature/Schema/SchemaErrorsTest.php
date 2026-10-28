@@ -9,10 +9,13 @@ use Ephraitech\Forms\Config\Forms;
 use Ephraitech\Forms\Exceptions\FormException;
 use Ephraitech\Forms\Form;
 use Ephraitech\Forms\Schema\SchemaException;
+use Ephraitech\Forms\Schema\SchemaPolicy;
 use Ephraitech\Forms\Schema\SchemaLoader;
 
 /**
  * Error reporting for invalid schemas: every error, with its location.
+ * Structural errors are the same under every policy; these load with the
+ * trusted policy so policy errors do not mix in.
  *
  * @internal
  */
@@ -37,7 +40,7 @@ final class SchemaErrorsTest extends CIUnitTestCase
     private function errors(array $schema): array
     {
         try {
-            Form::fromSchema($schema, $this->config);
+            Form::fromSchema($schema, $this->config, SchemaPolicy::trusted());
         } catch (SchemaException $e) {
             return $e->getMessages();
         }
@@ -73,7 +76,7 @@ final class SchemaErrorsTest extends CIUnitTestCase
     public function testExceptionCarriesStructuredErrors(): void
     {
         try {
-            Form::fromSchema(['fields' => [['type' => 'text']]], $this->config);
+            Form::fromSchema(['fields' => [['type' => 'text']]], $this->config, SchemaPolicy::trusted());
             $this->fail('expected a SchemaException');
         } catch (SchemaException $e) {
             $this->assertInstanceOf(FormException::class, $e);
@@ -84,7 +87,7 @@ final class SchemaErrorsTest extends CIUnitTestCase
 
     public function testErrorsWithoutLoading(): void
     {
-        $loader = new SchemaLoader($this->config);
+        $loader = new SchemaLoader($this->config, SchemaPolicy::trusted());
 
         $this->assertSame([], $loader->errors(['fields' => [['type' => 'text', 'name' => 'a']]]));
         $this->assertSame([['path' => 'fields', 'message' => 'is required: a list of fields and groups.']], $loader->errors([]));
@@ -297,7 +300,7 @@ final class SchemaErrorsTest extends CIUnitTestCase
     public function testInvalidJson(): void
     {
         try {
-            Form::fromJson('{"fields": [ {"type": "text",, } ]}', $this->config);
+            Form::fromJson('{"fields": [ {"type": "text",, } ]}', $this->config, SchemaPolicy::trusted());
             $this->fail('expected a SchemaException');
         } catch (SchemaException $e) {
             $this->assertSame(['The schema is not valid JSON (Syntax error).'], $e->getMessages());
@@ -308,7 +311,7 @@ final class SchemaErrorsTest extends CIUnitTestCase
     {
         foreach (['[]', '[{"type":"text"}]', '"text"', '42', 'null'] as $json) {
             try {
-                Form::fromJson($json, $this->config);
+                Form::fromJson($json, $this->config, SchemaPolicy::trusted());
                 $this->fail($json . ' should be rejected');
             } catch (SchemaException $e) {
                 $this->assertSame(['The schema must be a JSON object with a "fields" list.'], $e->getMessages(), $json);
@@ -327,7 +330,7 @@ final class SchemaErrorsTest extends CIUnitTestCase
     private function errorsFromJson(string $json): array
     {
         try {
-            Form::fromJson($json, $this->config);
+            Form::fromJson($json, $this->config, SchemaPolicy::trusted());
         } catch (SchemaException $e) {
             return $e->getMessages();
         }

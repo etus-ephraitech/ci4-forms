@@ -37,6 +37,7 @@ use Ephraitech\Forms\Layout\Fieldset;
 use Ephraitech\Forms\Layout\Row;
 use Ephraitech\Forms\Schema\SchemaException;
 use Ephraitech\Forms\Schema\SchemaLoader;
+use Ephraitech\Forms\Schema\SchemaPolicy;
 use Ephraitech\Forms\Support\FieldTypes;
 use Ephraitech\Forms\Support\RuleParser;
 use Stringable;
@@ -237,14 +238,20 @@ class Form implements Stringable
      * format). The schema is checked completely first; on any error a
      * SchemaException lists every problem and no form is created.
      *
+     * Schemas are treated as written by admins or clients and checked
+     * against SchemaPolicy::restricted() unless another policy is passed.
+     * For schemas written by developers and committed with the code:
+     *
+     *     Form::fromSchema($schema, policy: SchemaPolicy::trusted());
+     *
      * @param array<array-key, mixed> $schema
      *
      * @throws SchemaException
      */
-    public static function fromSchema(array $schema, ?Forms $config = null): static
+    public static function fromSchema(array $schema, ?Forms $config = null, ?SchemaPolicy $policy = null): static
     {
         $config ??= static::resolveConfig();
-        $loader   = new SchemaLoader($config);
+        $loader   = new SchemaLoader($config, $policy);
         $errors   = $loader->errors($schema);
 
         if ($errors !== []) {
@@ -264,23 +271,24 @@ class Form implements Stringable
      *
      * @throws SchemaException When the JSON or the schema is invalid.
      */
-    public static function fromJson(string $json, ?Forms $config = null): static
+    public static function fromJson(string $json, ?Forms $config = null, ?SchemaPolicy $policy = null): static
     {
-        return static::fromSchema(SchemaLoader::decodeJson($json), $config);
+        return static::fromSchema(SchemaLoader::decodeJson($json), $config, $policy);
     }
 
     /**
      * Adds a schema's fields (and settings) to this form, for example inside
      * define() to combine code and data. All or nothing: on any error the
-     * form is left unchanged.
+     * form is left unchanged. Checked against SchemaPolicy::restricted()
+     * unless another policy is passed.
      *
      * @param array<array-key, mixed> $schema
      *
      * @throws SchemaException
      */
-    public function loadSchema(array $schema): static
+    public function loadSchema(array $schema, ?SchemaPolicy $policy = null): static
     {
-        (new SchemaLoader($this->config))->load($schema, $this);
+        (new SchemaLoader($this->config, $policy))->load($schema, $this);
 
         return $this;
     }
