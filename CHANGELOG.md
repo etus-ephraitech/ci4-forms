@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
+Forms from schemas: load forms from arrays or JSON written by developers or admins, with a
+restricted policy by default, option providers, admin checks and export. No breaking changes.
+
 ### Added
 
 - Schema loading: `Form::fromSchema()`, `Form::fromJson()` and `$form->loadSchema()` build
@@ -183,6 +188,7 @@ security advisories).
   and an app config file into the application; existing files are kept unless forced.
 - GitHub Actions workflow testing PHP 8.2 to 8.5 against CodeIgniter 4.7.
 
-[Unreleased]: https://github.com/etus-ephraitech/ci4-forms/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/etus-ephraitech/ci4-forms/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/etus-ephraitech/ci4-forms/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/etus-ephraitech/ci4-forms/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/etus-ephraitech/ci4-forms/releases/tag/v0.1.0

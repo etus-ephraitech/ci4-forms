@@ -50,6 +50,7 @@ $this->bookingModel->insert($form->validated());
 - [File uploads](#file-uploads)
 - [Layout](#layout)
 - [Custom field types](#custom-field-types)
+- [Forms from schemas](#forms-from-schemas)
 - [Controllers and validation](#controllers-and-validation)
 - [Filling forms for editing](#filling-forms-for-editing)
 - [Rendering](#rendering)
@@ -57,6 +58,7 @@ $this->bookingModel->insert($form->validated());
 - [Customising the views](#customising-the-views)
 - [Security notes](#security-notes)
 - [Testing](#testing)
+- [Upgrading from 0.2](#upgrading-from-02)
 - [Upgrading from 0.1](#upgrading-from-01)
 - [Versioning](#versioning)
 
@@ -395,6 +397,176 @@ is loaded as given and receives the same variables as the package's views.
 Fields with a fixed set of values can implement `ChoiceFieldInterface` to get
 strict option checking.
 
+## Forms from schemas
+
+A form can also be defined as data: a PHP array or JSON, stored in a file or
+a database. Developers and admins write the same format.
+
+```json
+{
+  "version": 1,
+  "name": "enquiry",
+  "fields": [
+    { "type": "row", "children": [
+      { "type": "text", "name": "full_name", "label": "Full name", "rules": "required|max_length[100]", "width": 6 },
+      { "type": "tel",  "name": "phone", "label": "Phone", "rules": "required", "width": 6 }
+    ]},
+    { "type": "fieldset", "legend": "Your enquiry", "children": [
+      { "type": "select", "name": "service", "label": "Service", "options_from": "services", "rules": "required" },
+      { "type": "checkboxes", "name": "interests", "options": { "shirts": "Shirts", "kanzu": "Kanzu" } },
+      { "type": "file", "name": "photo", "max_size": 2048, "mimes": ["image/jpeg", "image/png"] },
+      { "type": "textarea", "name": "message", "rules": "required|max_length[2000]" }
+    ]},
+    { "type": "submit", "label": "Send enquiry" }
+  ]
+}
+```
+
+Every field option has a snake_case key (`rules`, `each_rules`, `messages`,
+`help`, `placeholder`, `default`, `width`, `options`, `multiple`, `inline`,
+`max_size`, `mimes`, and so on). Registered custom types work too; a custom
+field accepts extra keys by implementing `SchemaConfigurableInterface`.
+
+### Loading
+
+```php
+$form = Form::fromJson($json);              // or Form::fromSchema($array)
+$form->action(url_to('enquiries.store'));    // your controller decides where it posts
+
+$this->loadSchema($schema);                  // inside define(), to mix code and data
+```
+
+A loaded form validates, uploads and renders exactly like a form class.
+Loading is all or nothing: the whole schema is checked first, and a
+`SchemaException` lists every problem with its location:
+
+```
+- fields[0].type: unknown field type "txt" (did you mean "text"?).
+- fields[2].maxlength: is not a valid key for a "text" field; set length limits with "rules", for example "max_length[100]".
+- fields[4].children[1].name: "email" is already used by another field.
+```
+
+### Who writes the schema decides the policy
+
+Schemas are treated as written by **admins or clients** unless you say
+otherwise, and are checked against `SchemaPolicy::restricted()`. It blocks
+what an untrusted schema could use to harm the site or its visitors:
+
+| Blocked                                    | Why                                                       |
+| ------------------------------------------ | --------------------------------------------------------- |
+| `on*`, `formaction`, `style`, `data-*` attributes | They run script or trigger front-end behaviour; escaping cannot stop that |
+| Rules outside an allow-list, such as `is_unique`, `regex_match` | They read the database or can hang the server |
+| A form `action`                            | It could send every submission to another site            |
+| Uploads without `max_size` (max 10 MB) or an explicit `mimes` list | `image` alone also accepts SVG, which can carry script |
+| SVG and HTML uploads                       | Both can carry script                                     |
+| Names such as `role`, `is_admin`, `user_id` | Saved into a table, they would let visitors set them     |
+| `password` and `hidden` fields             | Phishing; data the visitor cannot see                     |
+| Unlisted custom types, oversized schemas   | Limits on fields, nesting, options, text length and rules |
+
+Rule parameters are checked too: `max_length[ten]` is rejected, and
+`matches[...]` must name a field in the same form.
+
+Schemas written by **developers** and committed with the code can be loaded
+with the trusted policy, which only checks structure:
+
+```php
+$form = Form::fromJson(file_get_contents(APPPATH . 'Forms/enquiry.json'), policy: SchemaPolicy::trusted());
+```
+
+Policies are immutable and can be adjusted per site:
+
+```php
+$policy = SchemaPolicy::restricted()
+    ->allowTypes('money')                              // a registered custom type
+    ->allowRules(['valid_ip' => SchemaPolicy::PARAM_NONE])
+    ->forbidNames('customer_id')                       // columns your code saves
+    ->disallowProviders('staff')                       // keep internal lists off public forms
+    ->withMaxUploadSize(20480);
+```
+
+Allowances that would reopen a hole, such as `allowAttributes('onclick')` or
+`allowMimes('image/svg+xml')`, are refused.
+
+### Option providers
+
+Schemas cannot contain code, so options from your database come through
+named providers you register in `app/Config/Forms.php`:
+
+```php
+public array $optionProviders = [
+    'services' => [\App\Models\ServiceModel::class, 'dropdown'],   // model method, loaded with model()
+    'branches' => 'App\Libraries\Branches::all',                  // static method
+];
+```
+
+A schema uses `"options_from": "services"`; code uses
+`->optionsFrom('services')`. A provider returns value => label pairs. It runs
+lazily, once per field, and never while a schema is loaded or checked, and
+strict option checking uses its options. Register only data that is safe on
+any form that may use it.
+
+### Admin screens
+
+`FormSchema::check()` checks what an admin typed without throwing, so it fits
+a "save" action or an AJAX "check" button:
+
+```php
+public function save(int $id)
+{
+    $check = FormSchema::check($this->request->getPost('schema'), $this->policy());
+
+    if (! $check->isValid()) {
+        return redirect()->back()->withInput()->with('schema_errors', $check->getMessages());
+    }
+
+    $this->formModel->update($id, ['schema' => json_encode($check->getSchema())]);
+
+    return redirect()->to('/admin/forms')->with('message', 'Form saved.');
+}
+```
+
+`getErrors()` returns structured `path`/`message` pairs, `getErrorsFor('fields[3]')`
+picks out one field's problems, and `toArray()` suits a JSON response.
+
+Load the saved schema with the same policy on the public page. If a stored
+schema stops passing (for example after you tighten the policy), loading
+throws: catch `SchemaException`, show a short notice to visitors, and log the
+messages for your admins.
+
+### Store submissions as a payload
+
+Save what an admin-defined form collects as one JSON column (for example a
+`submissions` table with `form_id`, `payload` and `created_at`), not by
+mapping fields onto columns:
+
+```php
+$this->submissionModel->insert([
+    'form_id' => $formId,
+    'payload' => json_encode($form->validated()),
+]);
+```
+
+Then a field an admin adds can never write to a column it should not touch.
+
+### Export
+
+Any form, including your form classes, can be exported as a schema that
+loads back into an identical form: same schema, same HTML, same validation.
+This is a quick way to give admins a starting template:
+
+```php
+$json = (new BookingForm())->toJson();
+```
+
+Provider options are exported as `options_from`. Closure rules and
+unregistered custom field classes make the export fail with their location.
+
+```bash
+php spark forms:schema export "App\Forms\BookingForm" --output writable/booking.json
+php spark forms:schema check writable/booking.json             # restricted policy
+php spark forms:schema check app/Forms/enquiry.json --trusted  # developer file
+```
+
 ## Controllers and validation
 
 `validate()` reads the current request (POST data for POST, PUT, PATCH and
@@ -600,6 +772,7 @@ class Forms extends BaseForms
 | `$strictOptionsMessage`   | see config     | Message for such values; `{field}` becomes the label           |
 | `$fileReselectMessage`    | see config     | Hint under file fields after a failed submission, or `null`    |
 | `$fieldTypes`             | `[]`           | Custom field types, as name => class                           |
+| `$optionProviders`        | `[]`           | Named option sources for `options_from` and `optionsFrom()`    |
 
 Scalar settings can also be set from `.env`, for example
 `forms.showErrorSummary = true`.
@@ -653,6 +826,12 @@ composer test
 The suite runs against CodeIgniter's real Validation service, request
 objects, session and view renderer.
 
+## Upgrading from 0.2
+
+0.3 adds schemas and changes nothing existing forms rely on. Forms can now
+also be created on the command line (spark commands, queue workers,
+seeders); in 0.2 that failed when a form was built outside a web request.
+
 ## Upgrading from 0.1
 
 Most apps need no changes. Check these four points:
@@ -678,8 +857,8 @@ The package follows [Semantic Versioning](https://semver.org). Until 1.0,
 minor releases (0.2, 0.3) may change the public API; each change is listed in
 [CHANGELOG.md](CHANGELOG.md).
 
-Planned for 0.3: loading forms from array or JSON schemas, built on
-`addField()` and the field type registry.
+Ideas for later versions are tracked as GitHub issues; suggestions are
+welcome.
 
 ## License
 
