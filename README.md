@@ -51,6 +51,8 @@ $this->bookingModel->insert($form->validated());
 - [Layout](#layout)
 - [Custom field types](#custom-field-types)
 - [Forms from schemas](#forms-from-schemas)
+- [Showing stored data](#showing-stored-data)
+- [Helpers](#helpers)
 - [Controllers and validation](#controllers-and-validation)
 - [Filling forms for editing](#filling-forms-for-editing)
 - [Rendering](#rendering)
@@ -58,6 +60,7 @@ $this->bookingModel->insert($form->validated());
 - [Customising the views](#customising-the-views)
 - [Security notes](#security-notes)
 - [Testing](#testing)
+- [Upgrading from 0.3](#upgrading-from-03)
 - [Upgrading from 0.2](#upgrading-from-02)
 - [Upgrading from 0.1](#upgrading-from-01)
 - [Versioning](#versioning)
@@ -567,6 +570,69 @@ php spark forms:schema check writable/booking.json             # restricted poli
 php spark forms:schema check app/Forms/enquiry.json --trusted  # developer file
 ```
 
+### Describing what schemas may contain
+
+`FormSchema::describe($policy)` returns, as JSON-ready data, everything a
+schema may contain under a policy: each allowed field type with a friendly
+label, the keys it accepts, the kind of value each takes and a one-line
+explanation, which keys are required (`requires`) and which cannot be combined
+(`exclusive`), plus the allowed rules, attributes, option providers, upload
+types and limits.
+
+```php
+return $this->response->setJSON(FormSchema::describe($this->policy()));
+```
+
+Use it for an admin help page, or as the data a visual builder reads to build
+its palette and property panels. It comes from the loader's own key lists, and
+the test suite loads every described key through the loader under each
+policy, so the description never offers something `check()` would reject.
+
+## Showing stored data
+
+`present()` turns stored data, such as a saved submission, into what people
+should read: the field's label, option labels instead of option values, *Yes*
+or *No* for checkboxes, and lists for multi-value fields.
+
+```php
+<?= $form->renderPresented($payload) ?>                  // Bootstrap description list
+
+<?php foreach ($form->present($payload) as $row): ?>      // rows for your own layout
+    <?= esc($row['label']) ?>: <?= esc($row['text']) ?>
+<?php endforeach ?>
+```
+
+Each row has `name`, `label`, `value` (text, or a list for multi-value
+fields), `text` (always a string) and `empty`. Rows are plain text: escape
+them when printing them yourself; `renderPresented()` escapes everything.
+Pass `false` as the second argument to leave empty fields out.
+
+Passwords, buttons and uploads are never shown, and keys that are not fields
+are ignored. A value that is no longer an option (the option was removed
+after the data was saved) is shown as stored rather than hidden. Custom fields
+can format their own values by overriding `presentValue()`, for example to
+show `UGX 1,500,000`. The texts come from `$presentYes`, `$presentNo` and
+`$presentEmpty` in config.
+
+## Helpers
+
+Load with `helper('forms')`. The functions are prefixed `forms_` so they never
+clash with CodeIgniter's own `form` helper, and both can be loaded together.
+
+| Helper                                        | Does                                                      |
+| --------------------------------------------- | --------------------------------------------------------- |
+| `forms_load($schema, $policy = null)`         | Builds a form from a schema array or JSON text            |
+| `forms_check($schema, $policy = null)`        | Checks a schema array or JSON text without throwing       |
+| `forms_present($form, $data, $includeEmpty = true)` | Stored data as HTML with labels and option texts    |
+
+Like the methods behind them, `forms_load()` and `forms_check()` use the
+restricted policy unless another is passed.
+
+```php
+<?php helper('forms') ?>
+<?= forms_present($form, json_decode($submission['payload'], true)) ?>
+```
+
 ## Controllers and validation
 
 `validate()` reads the current request (POST data for POST, PUT, PATCH and
@@ -773,6 +839,7 @@ class Forms extends BaseForms
 | `$fileReselectMessage`    | see config     | Hint under file fields after a failed submission, or `null`    |
 | `$fieldTypes`             | `[]`           | Custom field types, as name => class                           |
 | `$optionProviders`        | `[]`           | Named option sources for `options_from` and `optionsFrom()`    |
+| `$presentYes`, `$presentNo`, `$presentEmpty` | `Yes`, `No`, `—` | Texts used by `present()`                     |
 
 Scalar settings can also be set from `.env`, for example
 `forms.showErrorSummary = true`.
@@ -825,6 +892,12 @@ composer test
 
 The suite runs against CodeIgniter's real Validation service, request
 objects, session and view renderer.
+
+## Upgrading from 0.3
+
+0.4 only adds features. Custom fields extending `Field` gain `isPresentable()`
+and `presentValue()` automatically; classes implementing `FieldInterface`
+directly need nothing, and are presented as plain text.
 
 ## Upgrading from 0.2
 
