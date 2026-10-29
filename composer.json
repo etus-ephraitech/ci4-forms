@@ -51,8 +51,15 @@
         }
     },
     "scripts": {
-        "test": "phpunit"
+        "test": "phpunit",
+        "docs:reference": [
+            "@putenv DOCS_UPDATE=1",
+            "phpunit --filter SchemaReferenceTest"
+        ]
     },
     "minimum-stability": "dev",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "scripts-descriptions": {
+        "docs:reference": "Regenerate docs/reference/schema-keys.md from FormSchema::describe()."
+    }
 }

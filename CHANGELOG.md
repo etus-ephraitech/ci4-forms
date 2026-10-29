@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standard `$migrate = true`.
 - `tests/bootstrap.php` treats `docs/examples/app` as part of the test app, so example
   migrations and views work as they would in a real app.
+- Reference section: Form, Fields, Schemas, Configuration, and Helpers and commands, written
+  by hand and checked by `ApiReferenceTest` (every public method, setting, theme class key,
+  helper and command option must be documented, and everything documented must exist), plus
+  a Schema keys page generated from `FormSchema::describe()` with `composer docs:reference`
+  and checked by `SchemaReferenceTest`.
 
 ### Fixed
 

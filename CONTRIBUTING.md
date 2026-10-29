@@ -53,6 +53,21 @@ Each example has a test in `tests/Docs/`. When you add or change an example,
 add or update its test, so the published examples always work. A missing file
 fails the documentation build.
 
+### The reference is checked
+
+- `docs/reference/schema-keys.md` is generated from `FormSchema::describe()`.
+  Never edit it by hand; after changing schema keys, types or the restricted
+  policy, run `composer docs:reference`. `SchemaReferenceTest` fails while the
+  page is out of date.
+- `ApiReferenceTest` fails when a public method, setting, theme class key,
+  helper or command option is missing from the reference pages, or when a page
+  documents something that no longer exists. Add a row for every new public
+  method. Mark methods that are not part of the public API with `@internal`.
+- A method row starts with its signature in the first cell: ``| `name(...)` |``.
+  When the signature contains `|` (a union type), write
+  `| <code>name(array&#124;string $value)</code> |` instead, because Markdown
+  keeps the backslash of `\|` inside code.
+
 ### Writing style
 
 - Write for a developer who knows CodeIgniter but not this package.
