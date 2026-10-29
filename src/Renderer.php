@@ -470,7 +470,8 @@ class Renderer
     /**
      * The view to load for a template: the active theme's own file, or the
      * package's bundled copy of that theme when the theme's views folder
-     * lacks it. Templates given as a path are used as they are.
+     * lacks it, and then the same for the theme it extends, if any.
+     * Templates given as a path are used as they are.
      *
      * This keeps published (customised) views working after an upgrade that
      * adds templates for new field types: the new templates come from the
@@ -491,18 +492,30 @@ class Renderer
             return $this->resolvedViews[$key];
         }
 
-        $view = $this->config->viewPath($template);
+        $template = ltrim($template, '/\\');
+        $theme    = $this->config->theme;
+        $seen     = [];
 
-        if (! $this->viewExists($view)) {
-            $theme   = $this->config->theme;
-            $bundled = __DIR__ . '/Views/' . $theme . '/' . ltrim($template, '/\\') . '.php';
+        // The theme's own file; else the package's bundled copy of a theme
+        // with that name; else the same for the theme it extends, and so on.
+        while ($theme !== null && ! isset($seen[$theme])) {
+            $seen[$theme] = true;
+            $definition   = $this->config->themeDefinition($theme);
+            $view         = $definition['views'] . '/' . $template;
 
-            if (is_file($bundled)) {
-                $view = 'Ephraitech\\Forms\\Views\\' . $theme . '/' . ltrim($template, '/\\');
+            if ($this->viewExists($view)) {
+                return $this->resolvedViews[$key] = $view;
             }
+
+            if (is_file(__DIR__ . '/Views/' . $theme . '/' . $template . '.php')) {
+                return $this->resolvedViews[$key] = 'Ephraitech\\Forms\\Views\\' . $theme . '/' . $template;
+            }
+
+            $theme = $definition['extends'];
         }
 
-        return $this->resolvedViews[$key] = $view;
+        // Nothing found: let view() report the active theme's path.
+        return $this->resolvedViews[$key] = $this->config->viewPath($template);
     }
 
     /**

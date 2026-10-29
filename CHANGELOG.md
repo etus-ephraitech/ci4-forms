@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CONTRIBUTING.md` with instructions for running the tests and previewing the documentation.
 - *Getting started* tutorial: appointment booking with a two-column layout, a business rule
   and editing, built from tested example files run over HTTP against a database.
+- Guides for layout, multiple choices, file uploads, custom field types and customising views,
+  each with tested examples (a real `app/Config/Forms.php` example is tested in separate
+  processes so it cannot affect other tests).
+- Themes can extend another theme (`'extends' => 'bootstrap5'`): templates missing from a
+  theme's views folder are taken from the theme it extends, so a custom theme only needs the
+  templates it changes. The parent must be a registered theme; loops are guarded against.
 
 ### Fixed
 

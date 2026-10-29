@@ -78,3 +78,10 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Getting started: getting-started.md
+  - Guides:
+      - guides/index.md
+      - Layout: guides/layout.md
+      - Multiple choices: guides/multiple-choices.md
+      - File uploads: guides/file-uploads.md
+      - Custom field types: guides/custom-field-types.md
+      - Customising views: guides/customising-views.md

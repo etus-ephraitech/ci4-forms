@@ -420,6 +420,50 @@ final class RenderingTest extends CIUnitTestCase
         $this->assertStringContainsString('<fieldset class="mb-3">', $form->field('tags'), 'missing template comes from the package');
     }
 
+    public function testThemeExtendingAnotherThemeUsesItsTemplates(): void
+    {
+        service('autoloader')->addNamespace('FormsTestViews', dirname(__DIR__) . '/Support/Views');
+        $this->config->themes['custom'] = ['views' => 'FormsTestViews\\partial', 'extends' => 'bootstrap5', 'classes' => $this->config->themes['bootstrap5']['classes']];
+        $this->config->theme            = 'custom';
+
+        $form = $this->make();
+        $form->text('name');
+        $form->checkboxes('tags', 'Tags', ['a' => 'A']);
+
+        $this->assertStringContainsString('data-theme="partial"', $form->field('name'), 'its own template');
+        $this->assertStringContainsString('<fieldset class="mb-3">', $form->field('tags'), 'missing template from the theme it extends');
+    }
+
+    public function testThemeExtendsChainAndLoops(): void
+    {
+        service('autoloader')->addNamespace('FormsTestViews', dirname(__DIR__) . '/Support/Views');
+        $this->config->themes['middle'] = ['views' => 'FormsTestViews\\minimal', 'extends' => 'bootstrap5'];
+        $this->config->themes['top']    = ['views' => 'FormsTestViews\\partial', 'extends' => 'middle'];
+        $this->config->theme            = 'top';
+
+        $form = $this->make();
+        $form->checkboxes('tags', 'Tags', ['a' => 'A']);
+
+        $this->assertStringContainsString('<fieldset', $form->field('tags'), 'found two levels up');
+
+        $this->config->themes['middle']['extends'] = 'top';
+        $form                                      = $this->make();
+        $form->checkboxes('tags', 'Tags', ['a' => 'A']);
+
+        $this->expectException(\CodeIgniter\View\Exceptions\ViewException::class);
+        $form->field('tags');
+    }
+
+    public function testExtendingAnUnknownThemeIsRejected(): void
+    {
+        $this->config->themes['custom'] = ['views' => 'forms/custom', 'extends' => 'missing'];
+
+        $this->expectException(FormException::class);
+        $this->expectExceptionMessage('"extends" must name another registered theme.');
+
+        $this->config->themeDefinition('custom');
+    }
+
     public function testMissingTemplateOfUnknownThemeStillFails(): void
     {
         service('autoloader')->addNamespace('FormsTestViews', dirname(__DIR__) . '/Support/Views');

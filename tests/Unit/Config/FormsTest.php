@@ -29,6 +29,7 @@ final class FormsTest extends CIUnitTestCase
         $this->assertSame('Ephraitech\Forms\Views\bootstrap5', $theme['views']);
         $this->assertStringContainsString('*', $theme['required_marker']);
         $this->assertSame('form-control', $theme['classes']['input']);
+        $this->assertNull($theme['extends']);
     }
 
     public function testClassForReturnsThemeClass(): void

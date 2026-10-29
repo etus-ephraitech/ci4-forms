@@ -232,6 +232,7 @@ service and save.
     test suite runs the booking, listing, the date rule and editing over HTTP
     against a database, so the code works with the version you install.
 
-The [home page](index.md#what-the-package-covers) lists what else the package
-covers, such as file uploads, multiple choices, forms stored as data, and
-showing submissions.
+Continue with the [guides](guides/index.md): layouts, multiple choices, file
+uploads, custom field types and customising the views. The
+[home page](index.md#what-the-package-covers) lists everything the package
+covers.

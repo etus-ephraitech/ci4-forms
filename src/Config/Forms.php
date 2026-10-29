@@ -58,7 +58,11 @@ class Forms extends BaseConfig
      * - classes:         CSS classes the renderer applies, keyed by element.
      *                    In "column", {width} becomes the field's width.
      *
-     * @var array<string, array{views: string, required_marker?: string, classes?: array<string, string>}>
+     * - extends:         Optional name of another theme. Templates this theme's
+     *                    views folder lacks are taken from that theme, so a
+     *                    theme can override only the templates it changes.
+     *
+     * @var array<string, array{views: string, required_marker?: string, classes?: array<string, string>, extends?: string}>
      */
     public array $themes = [
         'bootstrap5' => [
@@ -236,7 +240,7 @@ class Forms extends BaseConfig
     /**
      * Returns the active theme definition, normalised.
      *
-     * @return array{views: string, required_marker: string, classes: array<string, string>}
+     * @return array{views: string, required_marker: string, classes: array<string, string>, extends: string|null}
      */
     public function activeTheme(): array
     {
@@ -246,7 +250,7 @@ class Forms extends BaseConfig
     /**
      * Returns a registered theme definition, normalised.
      *
-     * @return array{views: string, required_marker: string, classes: array<string, string>}
+     * @return array{views: string, required_marker: string, classes: array<string, string>, extends: string|null}
      *
      * @throws FormException When the theme is missing or malformed.
      */
@@ -284,10 +288,17 @@ class Forms extends BaseConfig
             }
         }
 
+        $extends = $theme['extends'] ?? null;
+
+        if ($extends !== null && (! is_string($extends) || ! array_key_exists($extends, $this->themes) || $extends === $name)) {
+            throw FormException::forInvalidTheme($name, '"extends" must name another registered theme.');
+        }
+
         return [
             'views'           => rtrim(trim($theme['views']), '/\\'),
             'required_marker' => $marker,
             'classes'         => $classes,
+            'extends'         => $extends,
         ];
     }
 
