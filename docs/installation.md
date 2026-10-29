@@ -32,13 +32,13 @@ forms:schema
 
 ### Choosing a version constraint
 
-Until version 1.0, a new minor version (0.4 to 0.5) may change behaviour, and
+Until version 1.0, a new minor version (0.5 to 0.6) may change behaviour, and
 each such change is listed in the changelog with upgrade notes. A constraint
-such as `^0.4` accepts bug-fix releases (0.4.1, 0.4.2) but not the next minor
+such as `^0.5` accepts bug-fix releases (0.5.1, 0.5.2) but not the next minor
 version, so upgrades only happen when you choose them:
 
 ```bash
-composer require ephraitech/ci4-forms:^0.4
+composer require ephraitech/ci4-forms:^0.5
 ```
 
 ## Add Bootstrap to your layout

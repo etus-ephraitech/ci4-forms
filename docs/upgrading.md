@@ -1,16 +1,17 @@
 # Upgrading
 
 Until version 1.0, a new minor version may change behaviour. Use a constraint
-such as `^0.4` so upgrades only happen when you choose them, and read the notes
+such as `^0.5` so upgrades only happen when you choose them, and read the notes
 below for every version you skip.
 
 ```bash
-composer require ephraitech/ci4-forms:^0.4
+composer require ephraitech/ci4-forms:^0.5
 ```
 
-## From 0.4 to the next release
+## From 0.4 to 0.5
 
-No changes are needed.
+No changes are needed. `^0.4` does not install 0.5; change your constraint to
+`^0.5`.
 
 - Genuine PUT, PATCH and DELETE requests (from JavaScript or API clients) are
   now validated with the data in their body. Browser forms were not affected.

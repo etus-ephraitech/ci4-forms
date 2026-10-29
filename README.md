@@ -1,102 +1,28 @@
 # ephraitech/ci4-forms
 
 [![Tests](https://github.com/etus-ephraitech/ci4-forms/actions/workflows/tests.yml/badge.svg)](https://github.com/etus-ephraitech/ci4-forms/actions/workflows/tests.yml)
+[![Docs](https://github.com/etus-ephraitech/ci4-forms/actions/workflows/docs.yml/badge.svg)](https://etus-ephraitech.github.io/ci4-forms/)
 
-A form builder for CodeIgniter 4.7+. Define a form once in PHP and the package
-renders it with Bootstrap 5, validates it with CodeIgniter's own Validation
-service, repopulates input after errors, and hands back only clean data for
-the fields you defined.
+**A form builder for CodeIgniter 4.7+.** Define a form once in PHP, and the
+package renders it with Bootstrap 5, validates it with CodeIgniter's own
+Validation service, puts the user's input back after an error, and hands you
+only clean data for the fields you defined.
 
-```php
-class BookingForm extends Form
-{
-    protected function define(): void
-    {
-        $this->text('full_name')->rules('required|max_length[100]');
-        $this->email('email')->rules('required|valid_email');
-        $this->select('service', 'Service', ['fitting' => 'Suit fitting', 'alterations' => 'Alterations'])
-            ->placeholder('Choose a service')
-            ->rules('required|in_list[fitting,alterations]');
-        $this->submit('Book now');
-    }
-}
-```
-
-```php
-// Controller
-$form = new BookingForm();
-
-if (! $form->validate()) {
-    return view('bookings/create', ['form' => $form]);
-}
-
-$this->bookingModel->insert($form->validated());
-```
-
-```php
-<!-- View -->
-<?= $form ?>
-```
-
-## Contents
-
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Defining forms](#defining-forms)
-- [Field types](#field-types)
-- [Field options](#field-options)
-- [Multiple values](#multiple-values)
-- [Strict option checking](#strict-option-checking)
-- [File uploads](#file-uploads)
-- [Layout](#layout)
-- [Custom field types](#custom-field-types)
-- [Forms from schemas](#forms-from-schemas)
-- [Showing stored data](#showing-stored-data)
-- [Helpers](#helpers)
-- [Controllers and validation](#controllers-and-validation)
-- [Filling forms for editing](#filling-forms-for-editing)
-- [Rendering](#rendering)
-- [Configuration](#configuration)
-- [Customising the views](#customising-the-views)
-- [Security notes](#security-notes)
-- [Testing](#testing)
-- [Upgrading from 0.3](#upgrading-from-03)
-- [Upgrading from 0.2](#upgrading-from-02)
-- [Upgrading from 0.1](#upgrading-from-01)
-- [Versioning](#versioning)
-
-## Requirements
-
-- PHP 8.2 or newer
-- CodeIgniter 4.7 or newer
-
-CodeIgniter 4.6 is not supported: every 4.6 release has published security
-advisories, and Composer blocks installing them by default. Upgrade to 4.7.
-
-## Installation
+**[Read the documentation](https://etus-ephraitech.github.io/ci4-forms/)**
 
 ```bash
 composer require ephraitech/ci4-forms
 ```
 
-That is all. CodeIgniter discovers the package automatically, including the
-`forms:publish` command.
+## Example
 
-To customise settings, create `app/Config/Forms.php` (see
-[Configuration](#configuration)), or let the publish command create it:
-
-```bash
-php spark forms:publish --config
-```
-
-## Defining forms
-
-### Form classes
-
-Use a class for any form you render or validate in more than one place, such
-as create and edit screens. Override `define()` and add fields:
+A form is a class:
 
 ```php
+<?php
+
+declare(strict_types=1);
+
 namespace App\Forms;
 
 use Ephraitech\Forms\Form;
@@ -105,833 +31,122 @@ class ContactForm extends Form
 {
     protected function define(): void
     {
-        $this->text('name', 'Your name')->rules('required|max_length[100]');
-        $this->email('email')->rules('required|valid_email');
-        $this->textarea('message')->rows(5)->rules('required|max_length[2000]');
+        $this->text('full_name', 'Full name')
+            ->rules('required|max_length[100]')
+            ->autocomplete('name');
+
+        $this->email('email', 'Email address')
+            ->rules('required|valid_email|max_length[150]')
+            ->autocomplete('email');
+
+        $this->select('topic', 'Topic', [
+            'booking' => 'A booking',
+            'pricing' => 'Prices',
+            'other'   => 'Something else',
+        ])
+            ->placeholder('Choose a topic')
+            ->rules('required');
+
+        $this->textarea('message', 'Message')
+            ->rows(5)
+            ->rules('required|max_length[2000]');
+
         $this->submit('Send message');
     }
 }
 ```
 
-The form name is derived from the class: `ContactForm` becomes `contact`,
-`UserProfileForm` becomes `user_profile`. Pass a name to override it, for
-example to put two instances on one page: `new ContactForm('footer_contact')`.
-
-### Inline forms
-
-For one-off forms, build inline and finish with `end()`, which returns the
-form from the last field:
+The controller shows it, and saves it when it is valid:
 
 ```php
-$form = Form::make('newsletter')
-    ->email('email')->rules('required|valid_email')
-    ->submit('Subscribe')
-    ->end();
-```
+<?php
 
-### Form settings
+declare(strict_types=1);
 
-```php
-$form->action(url_to('contact.send'));   // relative paths go through site_url()
-$form->method('patch');                  // get, post, put, patch or delete
-$form->multipart();                      // enctype for file uploads
-$form->id('contact-form');               // default: the form name
-$form->addClass('card p-3');
-$form->attribute('data-turbo', 'false');
-```
+namespace App\Controllers;
 
-PUT, PATCH and DELETE forms are sent as POST with a hidden `_method` field,
-which CodeIgniter's router understands.
+use App\Forms\ContactForm;
+use App\Models\ContactMessageModel;
+use CodeIgniter\HTTP\RedirectResponse;
 
-## Field types
-
-| Builder                                  | Renders                           | Notes                                              |
-| ---------------------------------------- | --------------------------------- | -------------------------------------------------- |
-| `text($name, $label)`                    | `<input type="text">`             |                                                    |
-| `email($name, $label)`                   | `<input type="email">`            | Pair with `valid_email`                            |
-| `password($name, $label)`                | `<input type="password">`         | Never repopulated, never trimmed                   |
-| `number($name, $label)`                  | `<input type="number">`           | `min`/`max` from rules; `step()`                   |
-| `tel($name, $label)`                     | `<input type="tel">`              |                                                    |
-| `url($name, $label)`                     | `<input type="url">`              | Pair with `valid_url_strict`                       |
-| `search($name, $label)`                  | `<input type="search">`           |                                                    |
-| `date($name, $label)`                    | `<input type="date">`             | `min()`/`max()`/`step()`; `valid_date[Y-m-d]`      |
-| `time($name, $label)`                    | `<input type="time">`             | `min()`/`max()`/`step()`; `valid_date[H:i]`        |
-| `datetimeLocal($name, $label)`           | `<input type="datetime-local">`   | `valid_date[Y-m-d\TH:i]`                           |
-| `color($name, $label)`                   | `<input type="color">`            | Value lower-cased, e.g. `#1a73e8`                  |
-| `hidden($name, $default)`                | `<input type="hidden">`           | Always validate hidden values                      |
-| `textarea($name, $label)`                | `<textarea>`                      | `rows()`                                           |
-| `select($name, $label, $options)`        | `<select>`                        | Option groups; `multiple()`, `size()`              |
-| `radio($name, $label, $options)`         | Radio group in a `<fieldset>`     | `inline()`                                         |
-| `checkbox($name, $label)`                | Single checkbox                   | `checkedValue()`, `inline()`                       |
-| `checkboxes($name, $label, $options)`    | Checkbox group in a `<fieldset>`  | Value is a list; `inline()`                        |
-| `file($name, $label)`                    | `<input type="file">`             | See [File uploads](#file-uploads)                  |
-| `submit($label, $name = 'submit')`       | `<button type="submit">`          | Never validated or returned                        |
-
-The label defaults to the humanised name: `appointment_date` becomes
-"Appointment date".
-
-Any type can also be created by its key, which is handy when building forms
-from data: `$form->addField('datetime_local', 'starts_at', 'Starts at')`.
-Your own field types are covered under [Custom field types](#custom-field-types).
-
-## Field options
-
-Every field supports:
-
-```php
-$this->text('phone', 'Phone number')
-    ->rules('required|regex_match[/^\+256\d{9}$/]')   // string or array, callables allowed
-    ->messages(['regex_match' => 'Enter a Ugandan number.'])
-    ->help('Spaces and dashes are fine.')
-    ->placeholder('0772 123 456')
-    ->default('+256')
-    ->addClass('form-control-lg')
-    ->attribute('data-mask', 'phone')
-    ->autocomplete('tel')
-    ->autofocus()
-    ->readonly()                                       // still submitted and validated
-    ->disabled()                                       // not submitted, not validated, not returned
-    ->id('custom-id');                                 // default: <form name>_<field name>
-```
-
-HTML attributes are derived from the rules automatically: `required`,
-`maxlength`/`minlength` from `max_length`, `min_length` and `exact_length`,
-and `min`/`max` on number fields from `greater_than_equal_to` and
-`less_than_equal_to`. They help browsers and screen readers; validation
-always happens on the server.
-
-### Options for select and radio
-
-```php
-// Array of value => label
-$this->select('service', 'Service', ['fitting' => 'Suit fitting', 'alterations' => 'Alterations']);
-
-// Closure, called once and only when the form is rendered or validated
-$this->select('service_id', 'Service', fn () => model(ServiceModel::class)->findColumn('name', 'id'));
-
-// Option groups (select only)
-$this->select('style', 'Style', [
-    'Suits'  => ['1' => 'Two-piece', '2' => 'Three-piece'],
-    'Shirts' => ['3' => 'Formal'],
-]);
-```
-
-Users can submit any value regardless of what the list shows, so the package
-rejects values that are not among the options automatically (see
-[Strict option checking](#strict-option-checking)); no `in_list` rule is
-needed.
-
-## Multiple values
-
-A multi-select and a checkbox group hold a list:
-
-```php
-$this->select('languages', 'Languages', ['en' => 'English', 'lg' => 'Luganda', 'sw' => 'Swahili'])
-    ->multiple()
-    ->size(3);
-
-$this->checkboxes('interests', 'Interests', ['suits' => 'Suits', 'shirts' => 'Shirts'])
-    ->rules('required')                     // at least one ticked
-    ->eachRules('max_length[20]')           // every ticked value
-    ->inline();
-```
-
-Both are submitted as `name[]`, and `validated()` returns a list such as
-`['suits', 'shirts']`, or `[]` when nothing is chosen, never `null`.
-`rules()` applies to the list as a whole; `eachRules()` applies to every item,
-and an empty list always passes it.
-
-Values are also forced into the right shape: a single value posted to a list
-field is wrapped in a list, and an array posted to a single-value field is
-treated as empty, so it can never reach your database as an array.
-
-## Strict option checking
-
-Selects, multi-selects, radios, checkbox groups and single checkboxes only
-accept their own options (for a single checkbox, its checked value). A
-tampered value such as `service=free_suit` gets "Please choose a valid option
-for Service." This runs after your rules, ignores empty values (that is what
-`required` is for) and survives `redirect()->withInput()`.
-
-```php
-// Per field: options filled in by JavaScript
-$this->select('city')->strictOptions(false);
-
-// Per field message
-$this->radio('payment', 'Payment', $methods)
-    ->messages(['options' => 'We only accept cash or mobile money.']);
-```
-
-Turn it off globally with `$strictOptions = false`, or change the message
-with `$strictOptionsMessage`, in `app/Config/Forms.php`.
-
-## File uploads
-
-```php
-$this->file('photo', 'Profile photo')
-    ->required()
-    ->maxSize(2048)                          // kilobytes
-    ->image()
-    ->mimes(['image/jpeg', 'image/png']);
-
-$this->file('documents', 'Supporting documents')
-    ->multiple()
-    ->extensions(['pdf', 'docx'])
-    ->mimes(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
-```
-
-| Method                  | CodeIgniter rule | Checks                                  |
-| ----------------------- | ---------------- | --------------------------------------- |
-| `required()`            | `uploaded`       | A file was uploaded                     |
-| `maxSize($kb)`          | `max_size`       | File size in kilobytes                  |
-| `extensions([...])`     | `ext_in`         | The file name's extension               |
-| `mimes([...])`          | `mime_in`        | The file's real content type            |
-| `image()`               | `is_image`       | The file is an image                    |
-| `maxDimensions($w, $h)` | `max_dims`       | Image size in pixels                    |
-
-Extensions come from the user's file name and are easy to fake, so combine
-`extensions()` with `mimes()` or `image()`. The helpers also set the input's
-`accept` attribute, so the browser's file picker shows matching files.
-
-An optional file field is only validated when a file is uploaded. A form with
-a file field is sent as multipart automatically.
-
-Uploads are never part of `validated()`. Store them after validation passes:
-
-```php
-if (! $form->validate()) {
-    return view('profile/edit', ['form' => $form]);
-}
-
-$data = $form->validated();
-$data['photo_path'] = $form->getFile('photo')?->store('photos');
-
-foreach ($form->getFiles('documents') as $file) {
-    $file->store('documents');
-}
-```
-
-Browsers cannot refill a file input, so after a failed submission each file
-field without its own error shows "Please choose the file again."
-(`$fileReselectMessage`; set it to `null` to hide it).
-
-## Layout
-
-Rows place fields side by side and fieldsets group them under a title. Both
-are defined in the form class, so `<?= $form ?>` renders the full layout:
-
-```php
-protected function define(): void
+class Contact extends BaseController
 {
-    $this->row(function () {
-        $this->text('first_name')->width(6);
-        $this->text('last_name')->width(6);
-    });
-
-    $this->fieldset('Delivery address', function () {
-        $this->text('street');
-
-        $this->row(function () {
-            $this->text('city')->width(8);
-            $this->text('postcode');            // no width: shares the rest
-        });
-    })->description('Where should we deliver?');
-}
-```
-
-Widths are out of 12 and stack on small screens. Groups nest freely, take
-`addClass()`, and fieldsets can sit side by side in a row with `->width(6)`.
-Hidden fields in a row take no column. Each closure also receives the form,
-which suits arrow functions and inline forms.
-
-Layout only decides where fields appear: validation, `validated()` and
-`field('city')` work exactly the same. `fields()` without arguments renders
-the layout; `fields('a', 'b')` renders the named fields without it. Column
-and section classes are in the theme config (`row`, `column` with a
-`{width}` placeholder, `column_auto`, `section`, `section_legend`,
-`section_description`).
-
-## Custom field types
-
-Write a field class, usually by extending `Ephraitech\Forms\Fields\InputField`
-or `Field`:
-
-```php
-namespace App\Forms\Fields;
-
-use Ephraitech\Forms\Config\Forms;
-use Ephraitech\Forms\Fields\InputField;
-
-class MoneyField extends InputField
-{
-    public const TYPE = 'money';
-
-    public const VIEW = 'forms/fields/money';    // app/Views/forms/fields/money.php
-
-    protected function normaliseScalar(mixed $value, Forms $config): mixed
+    public function index(): string
     {
-        if (is_string($value)) {
-            $value = str_replace([',', ' '], '', $value);   // "1,250,000" -> "1250000"
+        return view('contact', ['form' => new ContactForm()]);
+    }
+
+    public function send(): RedirectResponse|string
+    {
+        $form = new ContactForm();
+
+        if (! $form->validate()) {
+            return view('contact', ['form' => $form]);
         }
 
-        return parent::normaliseScalar($value, $config);
+        model(ContactMessageModel::class)->insert($form->validated());
+
+        return redirect()->to('/contact')->with('message', 'Thank you. We will reply within one working day.');
     }
 }
 ```
 
-Register it in `app/Config/Forms.php`:
+The view prints the whole form, with labels, errors, the CSRF field and
+Bootstrap classes:
 
 ```php
-public array $fieldTypes = [
-    'money' => \App\Forms\Fields\MoneyField::class,
-];
-```
+<h1>Contact us</h1>
 
-It then works like a built-in field, including chaining and layout groups:
+<?php if (session('message')): ?>
+    <div class="alert alert-success"><?= esc(session('message')) ?></div>
+<?php endif ?>
 
-```php
-$this->money('budget', 'Budget')->rules('permit_empty|is_natural');
-```
-
-Names are camelCase and must not clash with built-in types or `Form`
-methods; invalid registrations fail with a clear message. A `VIEW` without a
-path (such as `field_input`) comes from the active theme; a `VIEW` with a path
-is loaded as given and receives the same variables as the package's views.
-Fields with a fixed set of values can implement `ChoiceFieldInterface` to get
-strict option checking.
-
-## Forms from schemas
-
-A form can also be defined as data: a PHP array or JSON, stored in a file or
-a database. Developers and admins write the same format.
-
-```json
-{
-  "version": 1,
-  "name": "enquiry",
-  "fields": [
-    { "type": "row", "children": [
-      { "type": "text", "name": "full_name", "label": "Full name", "rules": "required|max_length[100]", "width": 6 },
-      { "type": "tel",  "name": "phone", "label": "Phone", "rules": "required", "width": 6 }
-    ]},
-    { "type": "fieldset", "legend": "Your enquiry", "children": [
-      { "type": "select", "name": "service", "label": "Service", "options_from": "services", "rules": "required" },
-      { "type": "checkboxes", "name": "interests", "options": { "shirts": "Shirts", "kanzu": "Kanzu" } },
-      { "type": "file", "name": "photo", "max_size": 2048, "mimes": ["image/jpeg", "image/png"] },
-      { "type": "textarea", "name": "message", "rules": "required|max_length[2000]" }
-    ]},
-    { "type": "submit", "label": "Send enquiry" }
-  ]
-}
-```
-
-Every field option has a snake_case key (`rules`, `each_rules`, `messages`,
-`help`, `placeholder`, `default`, `width`, `options`, `multiple`, `inline`,
-`max_size`, `mimes`, and so on). Registered custom types work too; a custom
-field accepts extra keys by implementing `SchemaConfigurableInterface`.
-
-### Loading
-
-```php
-$form = Form::fromJson($json);              // or Form::fromSchema($array)
-$form->action(url_to('enquiries.store'));    // your controller decides where it posts
-
-$this->loadSchema($schema);                  // inside define(), to mix code and data
-```
-
-A loaded form validates, uploads and renders exactly like a form class.
-Loading is all or nothing: the whole schema is checked first, and a
-`SchemaException` lists every problem with its location:
-
-```
-- fields[0].type: unknown field type "txt" (did you mean "text"?).
-- fields[2].maxlength: is not a valid key for a "text" field; set length limits with "rules", for example "max_length[100]".
-- fields[4].children[1].name: "email" is already used by another field.
-```
-
-### Who writes the schema decides the policy
-
-Schemas are treated as written by **admins or clients** unless you say
-otherwise, and are checked against `SchemaPolicy::restricted()`. It blocks
-what an untrusted schema could use to harm the site or its visitors:
-
-| Blocked                                    | Why                                                       |
-| ------------------------------------------ | --------------------------------------------------------- |
-| `on*`, `formaction`, `style`, `data-*` attributes | They run script or trigger front-end behaviour; escaping cannot stop that |
-| Rules outside an allow-list, such as `is_unique`, `regex_match` | They read the database or can hang the server |
-| A form `action`                            | It could send every submission to another site            |
-| Uploads without `max_size` (max 10 MB) or an explicit `mimes` list | `image` alone also accepts SVG, which can carry script |
-| SVG and HTML uploads                       | Both can carry script                                     |
-| Names such as `role`, `is_admin`, `user_id` | Saved into a table, they would let visitors set them     |
-| `password` and `hidden` fields             | Phishing; data the visitor cannot see                     |
-| Unlisted custom types, oversized schemas   | Limits on fields, nesting, options, text length and rules |
-
-Rule parameters are checked too: `max_length[ten]` is rejected, and
-`matches[...]` must name a field in the same form.
-
-Schemas written by **developers** and committed with the code can be loaded
-with the trusted policy, which only checks structure:
-
-```php
-$form = Form::fromJson(file_get_contents(APPPATH . 'Forms/enquiry.json'), policy: SchemaPolicy::trusted());
-```
-
-Policies are immutable and can be adjusted per site:
-
-```php
-$policy = SchemaPolicy::restricted()
-    ->allowTypes('money')                              // a registered custom type
-    ->allowRules(['valid_ip' => SchemaPolicy::PARAM_NONE])
-    ->forbidNames('customer_id')                       // columns your code saves
-    ->disallowProviders('staff')                       // keep internal lists off public forms
-    ->withMaxUploadSize(20480);
-```
-
-Allowances that would reopen a hole, such as `allowAttributes('onclick')` or
-`allowMimes('image/svg+xml')`, are refused.
-
-### Option providers
-
-Schemas cannot contain code, so options from your database come through
-named providers you register in `app/Config/Forms.php`:
-
-```php
-public array $optionProviders = [
-    'services' => [\App\Models\ServiceModel::class, 'dropdown'],   // model method, loaded with model()
-    'branches' => 'App\Libraries\Branches::all',                  // static method
-];
-```
-
-A schema uses `"options_from": "services"`; code uses
-`->optionsFrom('services')`. A provider returns value => label pairs. It runs
-lazily, once per field, and never while a schema is loaded or checked, and
-strict option checking uses its options. Register only data that is safe on
-any form that may use it.
-
-### Admin screens
-
-`FormSchema::check()` checks what an admin typed without throwing, so it fits
-a "save" action or an AJAX "check" button:
-
-```php
-public function save(int $id)
-{
-    $check = FormSchema::check($this->request->getPost('schema'), $this->policy());
-
-    if (! $check->isValid()) {
-        return redirect()->back()->withInput()->with('schema_errors', $check->getMessages());
-    }
-
-    $this->formModel->update($id, ['schema' => json_encode($check->getSchema())]);
-
-    return redirect()->to('/admin/forms')->with('message', 'Form saved.');
-}
-```
-
-`getErrors()` returns structured `path`/`message` pairs, `getErrorsFor('fields[3]')`
-picks out one field's problems, and `toArray()` suits a JSON response.
-
-Load the saved schema with the same policy on the public page. If a stored
-schema stops passing (for example after you tighten the policy), loading
-throws: catch `SchemaException`, show a short notice to visitors, and log the
-messages for your admins.
-
-### Store submissions as a payload
-
-Save what an admin-defined form collects as one JSON column (for example a
-`submissions` table with `form_id`, `payload` and `created_at`), not by
-mapping fields onto columns:
-
-```php
-$this->submissionModel->insert([
-    'form_id' => $formId,
-    'payload' => json_encode($form->validated()),
-]);
-```
-
-Then a field an admin adds can never write to a column it should not touch.
-
-### Export
-
-Any form, including your form classes, can be exported as a schema that
-loads back into an identical form: same schema, same HTML, same validation.
-This is a quick way to give admins a starting template:
-
-```php
-$json = (new BookingForm())->toJson();
-```
-
-Provider options are exported as `options_from`. Closure rules and
-unregistered custom field classes make the export fail with their location.
-
-```bash
-php spark forms:schema export "App\Forms\BookingForm" --output writable/booking.json
-php spark forms:schema check writable/booking.json             # restricted policy
-php spark forms:schema check app/Forms/enquiry.json --trusted  # developer file
-```
-
-### Describing what schemas may contain
-
-`FormSchema::describe($policy)` returns, as JSON-ready data, everything a
-schema may contain under a policy: each allowed field type with a friendly
-label, the keys it accepts, the kind of value each takes and a one-line
-explanation, which keys are required (`requires`) and which cannot be combined
-(`exclusive`), plus the allowed rules, attributes, option providers, upload
-types and limits.
-
-```php
-return $this->response->setJSON(FormSchema::describe($this->policy()));
-```
-
-Use it for an admin help page, or as the data a visual builder reads to build
-its palette and property panels. It comes from the loader's own key lists, and
-the test suite loads every described key through the loader under each
-policy, so the description never offers something `check()` would reject.
-
-## Showing stored data
-
-`present()` turns stored data, such as a saved submission, into what people
-should read: the field's label, option labels instead of option values, *Yes*
-or *No* for checkboxes, and lists for multi-value fields.
-
-```php
-<?= $form->renderPresented($payload) ?>                  // Bootstrap description list
-
-<?php foreach ($form->present($payload) as $row): ?>      // rows for your own layout
-    <?= esc($row['label']) ?>: <?= esc($row['text']) ?>
-<?php endforeach ?>
-```
-
-Each row has `name`, `label`, `value` (text, or a list for multi-value
-fields), `text` (always a string) and `empty`. Rows are plain text: escape
-them when printing them yourself; `renderPresented()` escapes everything.
-Pass `false` as the second argument to leave empty fields out.
-
-Passwords, buttons and uploads are never shown, and keys that are not fields
-are ignored. A value that is no longer an option (the option was removed
-after the data was saved) is shown as stored rather than hidden. Custom fields
-can format their own values by overriding `presentValue()`, for example to
-show `UGX 1,500,000`. The texts come from `$presentYes`, `$presentNo` and
-`$presentEmpty` in config.
-
-## Helpers
-
-Load with `helper('forms')`. The functions are prefixed `forms_` so they never
-clash with CodeIgniter's own `form` helper, and both can be loaded together.
-
-| Helper                                        | Does                                                      |
-| --------------------------------------------- | --------------------------------------------------------- |
-| `forms_load($schema, $policy = null)`         | Builds a form from a schema array or JSON text            |
-| `forms_check($schema, $policy = null)`        | Checks a schema array or JSON text without throwing       |
-| `forms_present($form, $data, $includeEmpty = true)` | Stored data as HTML with labels and option texts    |
-
-Like the methods behind them, `forms_load()` and `forms_check()` use the
-restricted policy unless another is passed.
-
-```php
-<?php helper('forms') ?>
-<?= forms_present($form, json_decode($submission['payload'], true)) ?>
-```
-
-## Controllers and validation
-
-`validate()` reads the current request (POST data for POST, PUT, PATCH and
-DELETE forms, the query string for GET forms, the decoded body for JSON
-requests), runs the rules and remembers the submission. You can also pass an
-`IncomingRequest` or a plain array.
-
-### Re-render on failure
-
-```php
-public function store()
-{
-    $form = new BookingForm();
-
-    if (! $form->validate()) {
-        return view('bookings/create', ['form' => $form]);
-    }
-
-    $this->bookingModel->insert($form->validated());
-
-    return redirect()->to('/bookings')->with('message', 'Booking saved.');
-}
-```
-
-### Redirect back on failure
-
-```php
-if (! $form->validate()) {
-    return redirect()->back()->withInput();
-}
-```
-
-Errors and input are carried through the session and shown when the form is
-rendered on the next request. Each form only picks up its own old input and
-errors, so several forms on one page never leak into each other.
-
-### validated()
-
-`validated()` returns only the form's enabled fields, so extra request keys
-never reach your model. Values are cleaned according to the config:
-
-- strings are trimmed (except passwords)
-- empty strings become `null`
-- an unticked checkbox returns `0` instead of being missing
-
-Leave out fields that are needed for validation but should not be saved:
-
-```php
-$this->userModel->insert($form->validated('password_confirm'));
-```
-
-`validated()` throws a `FormException` if called before `validate()` or after
-a failed validation, so unvalidated data cannot be saved by mistake.
-
-### Errors
-
-```php
-$form->hasErrors();
-$form->hasError('email');
-$form->getError('email');      // ?string
-$form->getErrors();            // ['email' => '...']
-```
-
-Add errors that need more than a validation rule, such as a database check.
-They also survive `redirect()->withInput()`:
-
-```php
-if (! $form->validate()) {
-    return view('bookings/create', ['form' => $form]);
-}
-
-if ($this->bookingModel->isSlotTaken($form->validated()['appointment_date'])) {
-    $form->setError('appointment_date', 'That date is fully booked.');
-
-    return view('bookings/create', ['form' => $form]);
-}
-```
-
-### Cleaning input before validation
-
-Override `prepareForValidation()` in a form class. The returned data is what
-gets validated, repopulated and returned by `validated()`:
-
-```php
-protected function prepareForValidation(array $data): array
-{
-    if (isset($data['phone']) && is_string($data['phone'])) {
-        $data['phone'] = preg_replace('/[\s\-]/', '', $data['phone']);
-    }
-
-    return $data;
-}
-```
-
-### Reusing the rules elsewhere
-
-`getValidationRules()` returns the rules in CodeIgniter's format, for example
-for a controller's own `$this->validate()` or an API endpoint.
-
-## Filling forms for editing
-
-```php
-public function edit(int $id)
-{
-    $booking = $this->bookingModel->find($id);
-
-    $form = (new BookingForm())
-        ->method('patch')
-        ->action(url_to('bookings.update', $id))
-        ->fill($booking)          // array, Entity or object
-        ->remove('terms');        // drop fields the edit screen does not need
-
-    $form->getField('submit')->label('Save changes');
-
-    return view('bookings/edit', ['form' => $form]);
-}
-```
-
-Each field shows, in order of priority: the submitted value, old input after
-a redirect, the filled data, then the field's default. Once a submission
-exists, a missing value means empty, so a checkbox the user unticked stays
-unticked even if the saved record has it ticked.
-
-## Rendering
-
-### The whole form
-
-```php
 <?= $form ?>
 ```
 
-### Custom layouts
+`validated()` returns only the fields the form defines, trimmed, with empty
+optional values as `null`, so a visitor who adds `is_admin=1` to the request
+cannot reach your model. The topic must be one of its three options, without
+you writing a rule for it. This example is tested end to end in the
+package's test suite.
 
-```php
-<?= $form->open() ?>
-<?= $form->errorSummary() ?>
+## What it covers
 
-<div class="row">
-    <div class="col-md-6"><?= $form->field('full_name') ?></div>
-    <div class="col-md-6"><?= $form->field('email') ?></div>
-</div>
+- **Forms in code**: text, email, number, date and time, selects and
+  multi-selects, radio and checkbox groups, file uploads, custom field types,
+  and layouts with rows and sections.
+- **Safe by default**: escaped output, unknown request keys dropped, choices
+  checked against their options, passwords never written back, uploads checked
+  by content.
+- **Forms as data**: JSON schemas stored in a file or database, so admins and
+  clients can edit forms, checked against a restrictive policy.
+- **Showing submissions** with the form's labels and option texts.
 
-<?= $form->fields('service', 'notes') ?>
-<?= $form->control('submit') ?>
-<?= $form->close() ?>
-```
+## Documentation
 
-| Method                  | Output                                                           |
-| ----------------------- | ---------------------------------------------------------------- |
-| `open($attributes)`     | `<form>` plus hidden form key, CSRF field and `_method` field    |
-| `close()`               | `</form>`                                                        |
-| `field($name)`          | Label, control, error and help text                              |
-| `fields(...$names)`     | Several fields in the given order; all fields with no arguments  |
-| `control($name)`        | The control only, for fully custom markup                        |
-| `errorSummary()`        | A list of all errors linking to their fields, or an empty string |
-| `render()` / `$form`    | The whole form                                                   |
+| Start here | Then |
+| ---------- | ---- |
+| [Installation](https://etus-ephraitech.github.io/ci4-forms/installation/) | [Guides](https://etus-ephraitech.github.io/ci4-forms/guides/): layout, multiple choices, uploads, custom fields, views, option providers, admin-written forms, submissions, testing, APIs |
+| [Getting started](https://etus-ephraitech.github.io/ci4-forms/getting-started/): a 20-minute tutorial | [Concepts](https://etus-ephraitech.github.io/ci4-forms/concepts/): how values, validation and security work |
+| [Upgrading](https://etus-ephraitech.github.io/ci4-forms/upgrading/) | [Reference](https://etus-ephraitech.github.io/ci4-forms/reference/): every method, setting, schema key, helper and command |
 
-Always render forms through `open()` or `<?= $form ?>`. The hidden `_form`
-field it adds is how the package tells which form a submission belongs to.
+## Requirements
 
-Output is escaped, errors and help text are linked with `aria-describedby`,
-invalid fields get `aria-invalid`, and radio groups use a `<fieldset>` and
-`<legend>`.
-
-## Configuration
-
-Create `app/Config/Forms.php` and override only what you need:
-
-```php
-namespace Config;
-
-use Ephraitech\Forms\Config\Forms as BaseForms;
-
-class Forms extends BaseForms
-{
-    public bool $showErrorSummary = true;
-
-    public function __construct()
-    {
-        parent::__construct();
-
-        $this->themes['bootstrap5']['classes']['submit'] = 'btn btn-success';
-    }
-}
-```
-
-| Setting                   | Default        | Effect                                                         |
-| ------------------------- | -------------- | -------------------------------------------------------------- |
-| `$theme`                  | `'bootstrap5'` | Active theme                                                   |
-| `$themes`                 | Bootstrap 5    | Views path, CSS classes and required marker per theme          |
-| `$defaultMethod`          | `'post'`       | Method for forms that do not set one                           |
-| `$csrf`                   | `true`         | Add the CSRF field to non-GET forms                            |
-| `$spoofMethods`           | `true`         | Send PUT, PATCH and DELETE as POST with `_method`              |
-| `$novalidate`             | `true`         | Disable browser validation so server messages show consistently |
-| `$ruleAttributes`         | `true`         | Add `required`, `maxlength` and similar from rules             |
-| `$showErrorSummary`       | `false`        | Show an error list above the fields in `<?= $form ?>`          |
-| `$useOldInput`            | `true`         | Repopulate after `redirect()->withInput()`                     |
-| `$prefixIdsWithFormName`  | `true`         | Ids like `booking_email`, unique across forms                  |
-| `$trimStrings`            | `true`         | Trim strings before validation and in `validated()`            |
-| `$emptyStringsToNull`     | `true`         | Empty strings become `null` in `validated()`                   |
-| `$checkboxUncheckedValue` | `0`            | Value of an unticked checkbox in `validated()`                 |
-| `$strictOptions`          | `true`         | Reject values outside a choice field's options                 |
-| `$strictOptionsMessage`   | see config     | Message for such values; `{field}` becomes the label           |
-| `$fileReselectMessage`    | see config     | Hint under file fields after a failed submission, or `null`    |
-| `$fieldTypes`             | `[]`           | Custom field types, as name => class                           |
-| `$optionProviders`        | `[]`           | Named option sources for `options_from` and `optionsFrom()`    |
-| `$presentYes`, `$presentNo`, `$presentEmpty` | `Yes`, `No`, `—` | Texts used by `present()`                     |
-
-Scalar settings can also be set from `.env`, for example
-`forms.showErrorSummary = true`.
-
-## Customising the views
-
-Copy the Bootstrap 5 views into your app:
-
-```bash
-php spark forms:publish --config
-```
-
-This creates `app/Views/forms/bootstrap5/` and an `app/Config/Forms.php`
-pointing the theme at it. Edit the views freely. If you already have a config
-file, the command prints the one line to add to it.
-
-Running the command again skips files that exist, so your changes are safe,
-and adds templates that are missing, for example after an upgrade that brings
-new field types. Until then, missing templates are taken from the package
-automatically. Use `--force` to overwrite your copies with the package's
-latest versions.
-
-Views receive prepared variables (`$name`, `$id`, `$label`, `$value`,
-`$error`, `$help`, `$attributes` and more) plus two helpers: `$e($text)` to
-escape and `$class('group')` for a theme class attribute. The variables are
-documented at the top of `Ephraitech\Forms\Renderer` and in each view.
-
-## Security notes
-
-- Every value, label, message and option is escaped. The only raw HTML is the
-  theme's `required_marker`, which comes from your config.
-- `validated()` returns only defined, enabled fields, which blocks mass
-  assignment through extra request keys.
-- Disabled fields are never accepted from the request. Read-only and hidden
-  fields are submitted by the browser and can be changed by the user, so
-  validate them like any other field.
-- Choice fields reject values outside their options automatically. Hidden
-  fields have no options, so validate them against what is allowed (for
-  example `is_not_unique[bookings.id]`).
-- Uploads are checked by content with `mimes()` and `image()`; never trust the
-  file name's extension alone.
-- Passwords are never written back into the page.
-
-## Testing
-
-```bash
-composer install
-composer test
-```
-
-The suite runs against CodeIgniter's real Validation service, request
-objects, session and view renderer.
-
-## Upgrading from 0.3
-
-0.4 only adds features. Custom fields extending `Field` gain `isPresentable()`
-and `presentValue()` automatically; classes implementing `FieldInterface`
-directly need nothing, and are presented as plain text.
-
-## Upgrading from 0.2
-
-0.3 adds schemas and changes nothing existing forms rely on. Forms can now
-also be created on the command line (spark commands, queue workers,
-seeders); in 0.2 that failed when a form was built outside a web request.
-
-## Upgrading from 0.1
-
-Most apps need no changes. Check these four points:
-
-1. **Strict option checking is on.** Values outside a field's options are now
-   rejected. If a form relied on accepting them, set
-   `->strictOptions(false)` on that field or `$strictOptions = false` in
-   config. Existing `in_list` rules keep working and can be removed.
-2. **Published views:** if you ran `forms:publish` in 0.1, update your
-   `field_select.php` with the package's new version (it uses `$inputName`
-   and `$values`), otherwise multi-selects post only one value. Then run
-   `php spark forms:publish` to add the new templates; existing files are not
-   touched.
-3. **Custom fields implementing `FieldInterface` directly** must add
-   `getEachRules()`, `isMultiple()` and `getWidth()`. Fields extending
-   `Field` or `InputField` need no changes.
-4. **`fields()` without arguments** now renders the layout. Forms without
-   rows or fieldsets render exactly as before.
+- PHP 8.2 or newer
+- CodeIgniter 4.7 or newer
+- Bootstrap 5 on your pages, for the default look
 
 ## Versioning
 
-The package follows [Semantic Versioning](https://semver.org). Until 1.0,
-minor releases (0.2, 0.3) may change the public API; each change is listed in
+The package follows [Semantic Versioning](https://semver.org). Until 1.0, a
+minor version may change behaviour, so use a constraint such as `^0.5` and
+read the [upgrade notes](https://etus-ephraitech.github.io/ci4-forms/upgrading/). Changes are listed in
 [CHANGELOG.md](CHANGELOG.md).
 
-Ideas for later versions are tracked as GitHub issues; suggestions are
-welcome.
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for running the tests and working on the
+documentation.
 
 ## License
 

@@ -30,46 +30,43 @@ test:
 --8<-- "docs/examples/tests/AppointmentsTest.php"
 ```
 
-## Things worth knowing
+## Common mistakes
 
-Forms that send PATCH, PUT or DELETE
-:   Browsers send these forms as `POST` with a hidden `_method` field. In a
-    feature test, send the real method with a URL-encoded body, as
-    `testChangingABooking()` does; the test framework sets the HTTP method
-    before CodeIgniter would read `_method`. Clear the previous request's POST
-    data first with `service('superglobals')->setPostArray([])`.
+**Posting a PATCH, PUT or DELETE form in a feature test.** Browsers send these
+forms as `POST` with a hidden `_method` field, but the test framework sets the
+HTTP method before CodeIgniter reads `_method`, so a POST never reaches a
+`PATCH` route. Send the real method with a URL-encoded body, as
+`testChangingABooking()` does, and clear the previous request's POST data first
+with `service('superglobals')->setPostArray([])`.
 
-Uploads
-:   PHP's `is_uploaded_file()` only accepts files from a real upload, so a test
-    cannot create a valid upload directly. Define a replacement in the
-    `CodeIgniter\HTTP\Files` namespace in your test bootstrap, as
-    CodeIgniter's own test suite does:
+**Expecting an upload to be valid in a test.** PHP's `is_uploaded_file()` only
+accepts files from a real upload. Define replacements in the
+`CodeIgniter\HTTP\Files` namespace in your test bootstrap, as CodeIgniter's
+own test suite does, then set the files with
+`service('superglobals')->setFilesArray([...])` before the request:
 
-    ```php
-    namespace CodeIgniter\HTTP\Files;
+```php
+namespace CodeIgniter\HTTP\Files;
 
-    function is_uploaded_file(string $filename): bool
-    {
-        return is_file($filename);
-    }
+function is_uploaded_file(string $filename): bool
+{
+    return is_file($filename);
+}
 
-    function move_uploaded_file(string $from, string $to): bool
-    {
-        return copy($from, $to);
-    }
-    ```
+function move_uploaded_file(string $from, string $to): bool
+{
+    return copy($from, $to);
+}
+```
 
-    Then set the files with `service('superglobals')->setFilesArray([...])`
-    before the request.
+**Posting without a CSRF token.** If your app runs CodeIgniter's CSRF filter
+on every request, it checks tokens in feature tests too, and a post without
+one fails with "The action you requested is not allowed." Add the token to the
+posted data:
 
-CSRF
-:   If your app runs CodeIgniter's CSRF filter on every request, it checks
-    tokens in feature tests too, and a post without one fails with "The action
-    you requested is not allowed." Add the token to the posted data:
-
-    ```php
-    $this->post('appointments', [csrf_token() => csrf_hash(), 'full_name' => 'Jane Namuli', /* ... */]);
-    ```
+```php
+$this->post('appointments', [csrf_token() => csrf_hash(), 'full_name' => 'Jane Namuli', /* ... */]);
+```
 
 ## Related
 
