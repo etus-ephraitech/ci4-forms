@@ -6,7 +6,6 @@ namespace Ephraitech\Forms\Tests\Docs;
 
 require_once __DIR__ . '/../Support/FakeUploads.php';
 
-use App\Database\Migrations\CreateCustomerPreferences;
 use App\Forms\DeliveryForm;
 use App\Forms\PreferencesForm;
 use App\Forms\ProfileForm;
@@ -15,7 +14,6 @@ use CodeIgniter\Config\Services;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
-use Config\Database;
 
 /**
  * Runs the examples of the layout, multiple choices and file uploads guides.
@@ -31,7 +29,11 @@ final class GuidesExampleTest extends CIUnitTestCase
 
     private const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-    protected $migrate = false;
+    protected $migrate = true;
+
+    protected $refresh = true;
+
+    protected $namespace;
 
     /**
      * @var list<string>
@@ -60,19 +62,6 @@ final class GuidesExampleTest extends CIUnitTestCase
     private function strip(string $html): string
     {
         return trim((string) preg_replace('/>\s+</', '><', (string) preg_replace('/<!-- DEBUG-VIEW (START|ENDED) [^>]*-->\n?/', '', $html)));
-    }
-
-    private function useView(string $view): void
-    {
-        $target = APPPATH . 'Views/' . $view;
-
-        if (! is_dir(dirname($target))) {
-            mkdir(dirname($target), 0755, true);
-            $this->cleanup[] = dirname($target);
-        }
-
-        copy(self::EXAMPLES . '/Views/' . $view, $target);
-        $this->cleanup[] = $target;
     }
 
     // -- Layout ---------------------------------------------------------------
@@ -112,11 +101,7 @@ final class GuidesExampleTest extends CIUnitTestCase
 
     public function testMultipleChoicesGuide(): void
     {
-        require_once self::EXAMPLES . '/Database/Migrations/2026-10-29-000200_CreateCustomerPreferences.php';
-        $migration = new CreateCustomerPreferences(Database::forge($this->DBGroup));
-        $migration->up();
-
-        try {
+        {
             $form = (new PreferencesForm())->setOldInput(null);
 
             $this->assertFalse($form->validate(['branches' => ['kampala']]));
@@ -141,8 +126,6 @@ final class GuidesExampleTest extends CIUnitTestCase
             $this->assertStringContainsString('value="kanzu" checked', $html);
             $this->assertStringNotContainsString('value="shirts" checked', $html);
             $this->assertStringContainsString('<select name="branches[]" id="preferences_branches" class="form-select" size="3" multiple', $html);
-        } finally {
-            $migration->down();
         }
     }
 
@@ -150,8 +133,6 @@ final class GuidesExampleTest extends CIUnitTestCase
 
     public function testFileUploadsGuide(): void
     {
-        $this->useView('profile.php');
-
         $photo = tempnam(sys_get_temp_dir(), 'docs');
         file_put_contents($photo, (string) base64_decode(self::PNG, true));
         $this->cleanup[] = $photo;

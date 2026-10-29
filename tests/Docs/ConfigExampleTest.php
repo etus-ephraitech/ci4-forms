@@ -6,6 +6,7 @@ namespace Ephraitech\Forms\Tests\Docs;
 
 use App\Forms\Fields\MoneyField;
 use App\Forms\QuoteForm;
+use App\Forms\ServiceRequestForm;
 use CodeIgniter\Test\CIUnitTestCase;
 use Ephraitech\Forms\Form;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
@@ -45,24 +46,6 @@ final class ConfigExampleTest extends CIUnitTestCase
         parent::tearDown();
     }
 
-    private function useView(string $view): void
-    {
-        $target = APPPATH . 'Views/' . $view;
-        $dirs   = [];
-
-        for ($dir = dirname($target); ! is_dir($dir); $dir = dirname($dir)) {
-            $dirs[] = $dir;
-        }
-
-        foreach (array_reverse($dirs) as $dir) {
-            mkdir($dir, 0755);
-            $this->cleanup[] = $dir;
-        }
-
-        copy(self::EXAMPLES . '/Views/' . $view, $target);
-        $this->cleanup[] = $target;
-    }
-
     private function strip(string $html): string
     {
         return trim((string) preg_replace('/>\s+</', '><', (string) preg_replace('/<!-- DEBUG-VIEW (START|ENDED) [^>]*-->\n?/', '', $html)));
@@ -77,14 +60,49 @@ final class ConfigExampleTest extends CIUnitTestCase
         $this->assertInstanceOf(\Config\Forms::class, $form->getConfig());
         $this->assertTrue($form->getConfig()->showErrorSummary);
         $this->assertSame(['money' => MoneyField::class], $form->getConfig()->fieldTypes);
+        $this->assertArrayHasKey('services', $form->getConfig()->optionProviders);
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testOptionProvidersGuide(): void
+    {
+        // Migration files start with a timestamp, so they are loaded by path.
+        require_once self::EXAMPLES . '/Database/Migrations/2026-10-29-000300_CreateServices.php';
+
+        $db = db_connect('tests');
+        (new \App\Database\Migrations\CreateServices(\Config\Database::forge('tests')))->up();
+
+        try {
+            $db->table('services')->insertBatch([
+                ['name' => 'Suit fitting', 'active' => 1],
+                ['name' => 'Alterations', 'active' => 1],
+                ['name' => 'Repairs (paused)', 'active' => 0],
+            ]);
+
+            $form = (new ServiceRequestForm())->setOldInput(null)->setOldErrors(null);
+
+            $this->assertSame('services', $form->getField('service_id')->getOptionProvider());
+            $this->assertSame(['2' => 'Alterations', '1' => 'Suit fitting'], $form->getField('service_id')->getOptions(), 'active services, by name');
+
+            $html = $form->field('service_id');
+            $this->assertStringContainsString('<option value="2">Alterations</option>', $html);
+            $this->assertStringNotContainsString('Repairs', $html);
+
+            $this->assertTrue($form->validate(['full_name' => 'Jane', 'service_id' => '1']));
+            $this->assertFalse((new ServiceRequestForm())->validate(['full_name' => 'Jane', 'service_id' => '3']), 'an inactive service is not an option');
+
+            $schemaForm = Form::fromSchema(['fields' => [['type' => 'select', 'name' => 'service_id', 'options_from' => 'services']]]);
+            $this->assertSame(['2', '1'], $schemaForm->getField('service_id')->getOptionValues());
+        } finally {
+            (new \App\Database\Migrations\CreateServices(\Config\Database::forge('tests')))->down();
+        }
     }
 
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
     public function testCustomFieldTypesGuide(): void
     {
-        $this->useView('forms/fields/money.php');
-
         $form = (new QuoteForm())->setOldInput(null)->setOldErrors(null);
 
         $this->assertInstanceOf(MoneyField::class, $form->getField('budget'));
@@ -122,8 +140,6 @@ final class ConfigExampleTest extends CIUnitTestCase
     #[PreserveGlobalState(false)]
     public function testCustomisingViewsGuideCompactTheme(): void
     {
-        $this->useView('forms/compact/field_input.php');
-
         $form = Form::make('x');
         $form->getConfig()->theme = 'compact';
         $form->text('name')->rules('required');

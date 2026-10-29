@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Config;
 
 use App\Forms\Fields\MoneyField;
+use App\Models\ServiceModel;
 use Ephraitech\Forms\Config\Forms as BaseForms;
 
 class Forms extends BaseForms
@@ -14,6 +15,12 @@ class Forms extends BaseForms
         'money' => MoneyField::class,
     ];
     // --8<-- [end:field-types]
+
+    // --8<-- [start:option-providers]
+    public array $optionProviders = [
+        'services' => [ServiceModel::class, 'dropdown'],
+    ];
+    // --8<-- [end:option-providers]
 
     // --8<-- [start:settings]
     public bool $showErrorSummary = true;

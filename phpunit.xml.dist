@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/codeigniter4/framework/system/Test/bootstrap.php"
+         bootstrap="tests/bootstrap.php"
          cacheDirectory=".phpunit.cache"
          colors="true"
          executionOrder="depends,defects"
@@ -17,6 +17,7 @@
         </testsuite>
         <testsuite name="Docs">
             <directory>tests/Docs</directory>
+            <directory>docs/examples/tests</directory>
         </testsuite>
     </testsuites>
     <source>

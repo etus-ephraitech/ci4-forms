@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Ephraitech\Forms\Tests\Docs;
 
-use App\Database\Migrations\CreateAppointments;
 use App\Forms\AppointmentForm;
 use CodeIgniter\Config\Services;
 use CodeIgniter\Exceptions\PageNotFoundException;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
-use Config\Database;
 
 /**
  * Runs the Getting started tutorial's example app (docs/examples/app) over
@@ -26,30 +24,16 @@ final class GettingStartedExampleTest extends CIUnitTestCase
 
     private const EXAMPLES = __DIR__ . '/../../docs/examples/app';
 
-    protected $migrate = false;
+    protected $migrate = true;
 
-    /**
-     * @var list<string>
-     */
-    private array $copiedViews = [];
+    protected $refresh = true;
+
+    protected $namespace;
+
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Example views live in docs/; CodeIgniter looks for app views in
-        // APPPATH, so they are placed there for the duration of the test.
-        if (! is_dir(APPPATH . 'Views/appointments')) {
-            mkdir(APPPATH . 'Views/appointments', 0755, true);
-        }
-
-        foreach (['appointments/form.php', 'appointments/index.php'] as $view) {
-            copy(self::EXAMPLES . '/Views/' . $view, APPPATH . 'Views/' . $view);
-            $this->copiedViews[] = APPPATH . 'Views/' . $view;
-        }
-
-        require_once self::EXAMPLES . '/Database/Migrations/2026-10-29-000100_CreateAppointments.php';
-        (new CreateAppointments(Database::forge($this->DBGroup)))->up();
 
         // The tutorial's own routes file, loaded the way app/Config/Routes.php would be.
         $routes = service('routes');
@@ -62,16 +46,6 @@ final class GettingStartedExampleTest extends CIUnitTestCase
 
     protected function tearDown(): void
     {
-        (new CreateAppointments(Database::forge($this->DBGroup)))->down();
-
-        foreach ($this->copiedViews as $file) {
-            if (is_file($file)) {
-                unlink($file);
-            }
-        }
-
-        @rmdir(APPPATH . 'Views/appointments');
-
         parent::tearDown();
     }
 

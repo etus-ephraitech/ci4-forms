@@ -85,3 +85,8 @@ nav:
       - File uploads: guides/file-uploads.md
       - Custom field types: guides/custom-field-types.md
       - Customising views: guides/customising-views.md
+      - Option providers: guides/option-providers.md
+      - Forms written by admins: guides/forms-written-by-admins.md
+      - Showing submissions: guides/showing-submissions.md
+      - Testing your forms: guides/testing-your-forms.md
+      - JavaScript and APIs: guides/javascript-and-apis.md

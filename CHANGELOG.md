@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Themes can extend another theme (`'extends' => 'bootstrap5'`): templates missing from a
   theme's views folder are taken from the theme it extends, so a custom theme only needs the
   templates it changes. The parent must be a registered theme; loops are guarded against.
+- Guides for option providers, forms written by admins, showing submissions, testing your
+  forms, and JavaScript and APIs, with tested example apps (an admin form editor and public
+  form pages, a submissions screen, a JSON API) and example tests that use CodeIgniter's
+  standard `$migrate = true`.
+- `tests/bootstrap.php` treats `docs/examples/app` as part of the test app, so example
+  migrations and views work as they would in a real app.
 
 ### Fixed
 

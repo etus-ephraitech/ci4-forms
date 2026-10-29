@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Ephraitech\Forms\Tests\Docs;
 
-use App\Database\Migrations\CreateContactMessages;
 use App\Forms\ContactForm;
 use CodeIgniter\Config\Services;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
-use Config\Database;
 
 /**
  * Runs the contact form example included on the documentation's home and
@@ -26,32 +24,22 @@ final class QuickStartExampleTest extends CIUnitTestCase
 
     private const EXAMPLES = __DIR__ . '/../../docs/examples/app';
 
-    protected $migrate = false;
+    protected $migrate = true;
 
-    private string $viewFile;
+    protected $refresh = true;
+
+    protected $namespace;
+
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        // The example view lives in docs/; CodeIgniter looks for app views in
-        // APPPATH, so it is placed there for the duration of the test.
-        $this->viewFile = APPPATH . 'Views/contact.php';
-        copy(self::EXAMPLES . '/Views/contact.php', $this->viewFile);
-
-        require_once self::EXAMPLES . '/Database/Migrations/2026-10-29-000000_CreateContactMessages.php';
-        (new CreateContactMessages(Database::forge($this->DBGroup)))->up();
 
         Services::resetSingle('validation');
     }
 
     protected function tearDown(): void
     {
-        (new CreateContactMessages(Database::forge($this->DBGroup)))->down();
-
-        if (is_file($this->viewFile)) {
-            unlink($this->viewFile);
-        }
 
         parent::tearDown();
     }
