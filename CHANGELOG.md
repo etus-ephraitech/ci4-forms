@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helper and command option must be documented, and everything documented must exist), plus
   a Schema keys page generated from `FormSchema::describe()` with `composer docs:reference`
   and checked by `SchemaReferenceTest`.
+- Concepts section explaining values, validation, security and architecture, with every
+  statement checked by `ConceptsClaimsTest` (each test is named after the page section that
+  makes the claim); Upgrading and Changelog pages (the changelog page includes this file).
 
 ### Fixed
 

@@ -68,6 +68,12 @@ fails the documentation build.
   `| <code>name(array&#124;string $value)</code> |` instead, because Markdown
   keeps the backslash of `\|` inside code.
 
+### Concept pages make checked claims
+
+`ConceptsClaimsTest` has one test per statement on the Concepts pages, named
+after the page and section (`testValuesMissingMeansEmptyOnceSubmitted`). When
+behaviour changes, update the paragraph and its test together.
+
 ### Writing style
 
 - Write for a developer who knows CodeIgniter but not this package.

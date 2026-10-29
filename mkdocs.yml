@@ -90,6 +90,12 @@ nav:
       - Showing submissions: guides/showing-submissions.md
       - Testing your forms: guides/testing-your-forms.md
       - JavaScript and APIs: guides/javascript-and-apis.md
+  - Concepts:
+      - concepts/index.md
+      - Values: concepts/values.md
+      - Validation: concepts/validation.md
+      - Security: concepts/security.md
+      - Architecture: concepts/architecture.md
   - Reference:
       - reference/index.md
       - Form: reference/form.md
@@ -98,3 +104,5 @@ nav:
       - Schema keys: reference/schema-keys.md
       - Configuration: reference/configuration.md
       - Helpers and commands: reference/helpers-and-commands.md
+  - Upgrading: upgrading.md
+  - Changelog: changelog.md
