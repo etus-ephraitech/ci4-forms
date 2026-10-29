@@ -111,3 +111,6 @@ php spark migrate
 Open `/contact` in your browser, submit the form empty to see the error
 messages, then send a real message and find it in the `contact_messages`
 table.
+
+Then follow [Getting started](getting-started.md) to build a booking feature
+with a layout, a business rule and editing.

@@ -310,6 +310,36 @@ final class ValidationTest extends CIUnitTestCase
         $this->assertSame('From JSON', $form->validated()['full_name']);
     }
 
+    public function testGenuinePatchRequestBody(): void
+    {
+        // A real PATCH request starts with an empty $_POST; clear what earlier
+        // tests left in CodeIgniter's superglobals snapshot.
+        $_POST = [];
+        service('superglobals')->setPostArray([]);
+
+        $form = $this->booking()->method('patch');
+
+        /** @var IncomingRequest $request */
+        $request = Services::incomingrequest(config(App::class), false);
+        $request->setMethod('PATCH');
+        $request->setHeader('Content-Type', 'application/x-www-form-urlencoded');
+        $request->setBody(http_build_query($this->validBooking(['full_name' => 'From a PATCH body', 'is_returning' => null])));
+
+        $this->assertTrue($form->validate($request), json_encode($form->getErrors()));
+        $this->assertSame('From a PATCH body', $form->validated()['full_name']);
+        $this->assertSame(0, $form->validated()['is_returning']);
+    }
+
+    public function testSpoofedPatchStillReadsPostData(): void
+    {
+        $form    = $this->booking()->method('patch');
+        $request = $this->request('POST', $this->validBooking(['_method' => 'PATCH', 'full_name' => 'From POST']));
+        $request->setMethod('PATCH');
+
+        $this->assertTrue($form->validate($request));
+        $this->assertSame('From POST', $form->validated()['full_name']);
+    }
+
     public function testDefaultsToSharedRequest(): void
     {
         Services::injectMock('request', $this->request('POST', $this->validBooking(['full_name' => 'Shared'])));

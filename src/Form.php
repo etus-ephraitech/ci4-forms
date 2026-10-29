@@ -1022,8 +1022,9 @@ class Form implements Stringable
      * Validates submitted data against the fields' rules.
      *
      * With no argument the current request is used: POST data for POST, PUT,
-     * PATCH and DELETE forms, query data for GET forms, and the decoded body
-     * for JSON requests. An array can be passed instead, for APIs and tests.
+     * PATCH and DELETE forms (or the URL-encoded body of a genuine PUT, PATCH
+     * or DELETE request), query data for GET forms, and the decoded body for
+     * JSON requests. An array can be passed instead, for APIs and tests.
      *
      * The data is stored as this form's submission, so a failed form can be
      * re-rendered with the user's input, and validated() can be called when
@@ -1599,7 +1600,20 @@ class Form implements Stringable
             return is_array($json) ? $this->stringKeys($json) : [];
         }
 
-        $data = $this->getHtmlMethod() === 'get' ? $request->getGet() : $request->getPost();
+        if ($this->getHtmlMethod() === 'get') {
+            $data = $request->getGet();
+
+            return is_array($data) ? $this->stringKeys($data) : [];
+        }
+
+        $data = $request->getPost();
+
+        // A genuine PUT, PATCH or DELETE request (from an API client or
+        // fetch(), rather than a browser form spoofing the method) carries its
+        // URL-encoded data in the raw body, which PHP does not put in $_POST.
+        if (($data === [] || $data === null) && in_array(strtolower($request->getMethod()), ['put', 'patch', 'delete'], true)) {
+            $data = $request->getRawInput();
+        }
 
         return is_array($data) ? $this->stringKeys($data) : [];
     }

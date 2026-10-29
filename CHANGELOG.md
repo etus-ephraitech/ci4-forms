@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   push and pull request. Code examples are real files in `docs/examples/app/`, included into
   the pages and run by a new `tests/Docs` suite, so published examples always work.
 - `CONTRIBUTING.md` with instructions for running the tests and previewing the documentation.
+- *Getting started* tutorial: appointment booking with a two-column layout, a business rule
+  and editing, built from tested example files run over HTTP against a database.
+
+### Fixed
+
+- `validate()` ignored the data of genuine `PUT`, `PATCH` and `DELETE` requests (from
+  JavaScript or API clients), whose URL-encoded body PHP does not put in `$_POST`. It now
+  reads the raw body for those methods when `$_POST` is empty. Browser forms, which send
+  `POST` with a hidden `_method` field, were not affected.
 
 ## [0.4.0] - 2026-10-29
 
