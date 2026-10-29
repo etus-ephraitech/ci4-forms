@@ -1,0 +1,9 @@
+# Exact version, so every build of the documentation is the same.
+# Install with: pip install -r docs/requirements.txt
+#
+# Zensical is the successor to Material for MkDocs, built by the same team,
+# and reads mkdocs.yml unchanged. Material for MkDocs reaches end of life on
+# 5 May 2027. To build with it instead (until then), install
+# mkdocs==1.6.1 mkdocs-material==9.8.0 pymdown-extensions==12.3
+# and run "mkdocs build --strict".
+zensical==0.0.73

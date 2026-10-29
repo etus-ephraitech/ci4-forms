@@ -1,0 +1,79 @@
+# Built with Zensical (the successor to Material for MkDocs), which reads
+# this file unchanged. It also builds with MkDocs Material 9.8; see
+# docs/requirements.txt.
+site_name: ci4-forms
+site_description: A form builder for CodeIgniter 4.7+, from Ephraitech Unified Solutions.
+site_url: https://etus-ephraitech.github.io/ci4-forms/
+repo_url: https://github.com/etus-ephraitech/ci4-forms
+repo_name: etus-ephraitech/ci4-forms
+edit_uri: edit/master/docs/
+copyright: Copyright &copy; 2026 Ephraitech Unified Solutions. Released under the MIT License.
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+    - toc.follow
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      # Examples are included from docs/examples, where tests run them.
+      base_path: ["."]
+      check_paths: true
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+exclude_docs: |
+  examples/
+  requirements.txt
+
+nav:
+  - Home: index.md
+  - Installation: installation.md

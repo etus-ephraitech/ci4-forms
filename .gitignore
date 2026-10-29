@@ -10,3 +10,5 @@ phpunit.xml
 *.swp
 .DS_Store
 Thumbs.db
+/site/
+/.venv/

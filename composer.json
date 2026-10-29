@@ -37,7 +37,8 @@
     },
     "autoload-dev": {
         "psr-4": {
-            "Ephraitech\\Forms\\Tests\\": "tests/"
+            "Ephraitech\\Forms\\Tests\\": "tests/",
+            "App\\": "docs/examples/app/"
         }
     },
     "config": {

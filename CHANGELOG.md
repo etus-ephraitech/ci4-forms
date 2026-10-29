@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Documentation site, built from `docs/` with Zensical (reading `mkdocs.yml`) and published
+  to GitHub Pages on release tags by a new Docs workflow that builds in strict mode on every
+  push and pull request. Code examples are real files in `docs/examples/app/`, included into
+  the pages and run by a new `tests/Docs` suite, so published examples always work.
+- `CONTRIBUTING.md` with instructions for running the tests and previewing the documentation.
+
 ## [0.4.0] - 2026-10-29
 
 Showing stored data, a `forms` helper, and `FormSchema::describe()` as groundwork for visual
